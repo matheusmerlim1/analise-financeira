@@ -526,15 +526,16 @@ function melhores(pool, filtro, valor, prazo, limiteEmissor = 250000) {
 function dimensionar(cands, total, cap, minOrdem = 100) {
   // trader-budget: pesos → teto por ativo com redistribuição → descarta fatias abaixo do mínimo → arredonda
   let xs = cands.map(c => ({ ...c }));
+  const lim = x => x.lim ?? cap;  // teto individual (ex.: descontando o que a pessoa já tem da ação)
   for (let pass = 0; pass < 10; pass++) {
     xs.forEach(x => x.cap = false);
     let resto = total, livres = [...xs];
     while (livres.length) {
       const sw = livres.reduce((s, x) => s + x.w, 0);
       livres.forEach(x => x.v = resto * x.w / sw);
-      const over = livres.filter(x => x.v > cap);
+      const over = livres.filter(x => x.v > lim(x));
       if (!over.length) break;
-      over.forEach(x => { x.v = cap; x.cap = true; resto -= cap; });
+      over.forEach(x => { x.v = lim(x); x.cap = true; resto -= lim(x); });
       livres = livres.filter(x => !x.cap);
     }
     const peq = xs.filter(x => x.v < minOrdem);
@@ -741,6 +742,7 @@ function renderTudo() {
   rebuild(); preencherSelects();
   const pv = previsaoIbov();
   renderStrip(pv); renderPainel(pv); renderChips(); renderRF(); renderOffEditor(); renderCarteira(); renderAcoes(); renderNoticias(); renderMacro();
+  if (typeof renderExist === 'function') renderExist();
 }
 function goto(tab) {
   document.querySelectorAll('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.tab === tab));

@@ -116,6 +116,13 @@ td input.n{width:72px;text-align:right}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12px}.kv b{font-weight:600}
 .slider{display:grid;grid-template-columns:130px 1fr 44px;gap:8px;align-items:center;font-size:12px}
 footer{margin-top:20px;color:var(--ink-3);font-size:11px}
+.seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:3px;margin-bottom:10px;gap:2px}
+.seg button{font:inherit;font-weight:500;border:0;background:none;color:var(--ink-2);padding:6px 14px;border-radius:6px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:9px;padding:12px;cursor:pointer;text-align:center}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.ai{font-size:13px;line-height:1.55;color:var(--ink)}.ai h3{font-size:13.5px;margin:12px 0 4px}.ai ul{margin:4px 0;padding-left:18px}.ai p{margin:6px 0}
+tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 </style>
 </head>
 <body>
@@ -177,6 +184,56 @@ footer{margin-top:20px;color:var(--ink-3);font-size:11px}
 
   <!-- CARTEIRA -->
   <section class="tab" id="tab-carteira">
+    <div class="seg" id="modoSeg"><button data-modo="zero">Montar do zero</button><button data-modo="exist">Analisar minha carteira</button></div>
+    <div id="modoExist" hidden>
+      <div class="grid g12">
+        <div class="card">
+          <h2>Sua carteira atual</h2>
+          <p class="sub">Digite o que você tem ou importe um arquivo. Tudo é lido e guardado só neste navegador.</p>
+          <label class="drop mt" id="eDrop">
+            <input type="file" id="eFile" accept=".csv,.txt,.xlsx,.xls,.pdf" hidden>
+            <b>Importar arquivo</b><br><span class="sub">Extrato de posição da B3 (Área do Investidor → Extratos → Posição, .xlsx), planilha/CSV da corretora ou PDF da declaração do Imposto de Renda (Bens e Direitos) / informe de rendimentos.</span>
+          </label>
+          <p class="sub mt" id="eImpMsg"></p>
+          <div class="form mt">
+            <label class="f">Perfil<select id="ePerfil"><option value="conservador">Conservador</option><option value="moderado" selected>Moderado</option><option value="arrojado">Arrojado</option></select></label>
+            <label class="f">Prazo (meses)<input id="ePrazo" type="number" min="1" max="120" value="36"></label>
+            <label class="f">Vou aportar (R$)<input id="eAporte" type="number" min="0" step="500" value="5000"></label>
+            <label class="f">Plataforma do aporte<select id="ePlat"></select></label>
+            <label class="f">Reserva desejada (%)<input id="eRes" type="number" min="0" max="100" value="15"></label>
+            <label class="f">Máx. por ação (%)<input id="eCap" type="number" min="1" max="50" value="8"></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row sp"><h2>Diagnóstico</h2><span class="sub" id="eTotal"></span></div>
+          <div class="grid g12 mt" style="align-items:center">
+            <div><div class="verdict" id="eVerdict">—</div><div class="num sub" id="eScore"></div><div class="meter" id="eMeter"><span></span><span></span><span></span><span></span><span></span></div><p class="sub" id="eVerdictSub"></p></div>
+            <div class="chart sm"><canvas id="chExist"></canvas></div>
+          </div>
+          <div class="scroll short mt"><table id="eClasses"></table></div>
+        </div>
+      </div>
+      <div class="card mt">
+        <div class="row sp"><h2>Seus ativos</h2><div class="row"><button class="btn" id="eAdd">+ Adicionar ativo</button><button class="btn ghost" id="eClear">Limpar tudo</button></div></div>
+        <p class="sub">Valor atual de cada aplicação. Para ações, informe a quantidade e o valor é calculado pela cotação. Linhas importadas aparecem marcadas: confira antes de confiar no diagnóstico.</p>
+        <div class="scroll mt"><table id="eTbl"></table></div>
+      </div>
+      <div class="grid g2 mt">
+        <div class="card"><h2>Pontos de atenção</h2><div class="scroll short mt"><table id="eFind"></table></div></div>
+        <div class="card"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="sub mt" id="eRebal"></p></div>
+      </div>
+      <div class="card mt">
+        <div class="row sp"><h2>Análise com IA (Claude)</h2><span class="pill acc">opcional</span></div>
+        <p class="sub">Envia um resumo da carteira (tipos, valores, taxas — sem nome, CPF ou conta) e o contexto de mercado ao Claude, usando a <b>sua</b> chave da API Anthropic (console.anthropic.com). A chave vai direto do seu navegador para a Anthropic; este site não tem servidor.</p>
+        <div class="row mt">
+          <input id="aiKey" type="password" placeholder="sk-ant-…" style="flex:1;min-width:200px">
+          <label class="ck"><input type="checkbox" id="aiRemember"> lembrar neste navegador</label>
+          <button class="btn" id="aiRun">Analisar com IA</button>
+        </div>
+        <div id="aiOut" class="ai mt"></div>
+      </div>
+    </div>
+    <div id="modoZero">
     <div class="grid g12">
       <div class="card">
         <h2>Seu perfil</h2><p class="sub">A carteira é recalculada na hora.</p>
@@ -205,6 +262,7 @@ footer{margin-top:20px;color:var(--ink-3);font-size:11px}
     <div class="grid g2 mt">
       <div class="card"><h2>Por que essa divisão</h2><ul class="why" id="cWhy"></ul></div>
       <div class="card"><h2>Checagem de risco</h2><p class="sub">Regras do gerente de risco antes de aplicar.</p><div class="scroll short"><table id="cRisk"></table></div></div>
+    </div>
     </div>
   </section>
 
@@ -343,5 +401,6 @@ footer{margin-top:20px;color:var(--ink-3);font-size:11px}
 <script src="ofertas.js"></script>
 <script src="dados.js"></script>
 <script src="app.js"></script>
+<script src="carteira.js"></script>
 </body>
 </html>

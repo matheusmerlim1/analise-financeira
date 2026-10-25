@@ -41,7 +41,7 @@ jobs:
       - name: Montar o site
         run: |
           mkdir _site
-          cp index.html app.js ofertas.js dados.js _site/
+          cp index.html app.js carteira.js ofertas.js dados.js _site/
 
       - uses: actions/upload-pages-artifact@v3
         with:
