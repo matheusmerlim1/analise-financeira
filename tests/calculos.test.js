@@ -1,5 +1,12 @@
 const { aliquotaIR, dimensionar, distribuirAporte, evolucaoCarteira, indiceAcumulado, rentabilidade } = require('../calculos');
 
+describe('períodos do gráfico', () => {
+  const { periodoDisponivel } = require('../calculos');
+  test('2 anos vale para ação com ~498 pregões (feriados encurtam o ano)', () => expect(periodoDisponivel(504, 498)).toBe(true));
+  test('2 anos não vale para FII com só 1 ano de histórico', () => expect(periodoDisponivel(504, 249)).toBe(false));
+  test('1 ano vale com 249 pregões', () => expect(periodoDisponivel(252, 249)).toBe(true));
+});
+
 describe('documentos importados', () => {
   const { extratosMovimentacao } = require('../calculos');
   test('taxas e proventos mensais só vêm de extratos de movimentação (não de informe nem de IRPF)', () => {

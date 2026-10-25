@@ -390,7 +390,7 @@ function renderPainel(pv) {
     { k: 's', h: el.id === 'pTopUp' ? 'Mais fortes' : 'Mais fracas', f: r => `<b title="${esc(r.setor)}">${r.sym}</b>` },
     { k: 'p', h: 'Previsão', f: r => pillNivel(r.prev) },
     { k: 'r', h: '1m', r: 1, f: r => `<span class="num ${cls(r.r1)}">${sgnPct(r.r1)}</span>` }
-  ], rows, { rerender: () => renderPainel(pv), onRow: r => { aSel = r.sym; goto('acoes'); renderAcoes(); } });
+  ], rows, { rerender: () => renderPainel(pv), onRow: r => abrirAtivo(r.sym) });
   mini($('#pTopUp'), lst.slice(0, 6)); mini($('#pTopDown'), lst.slice(-6).reverse());
   $('#pNews').innerHTML = newsItems(NEWS.slice(0, 25));
 }
@@ -628,7 +628,7 @@ function renderCarteira() {
   $('#cResumo').textContent = `${linhas.length} posições · ${p.perfil}`;
   const corDe = k => css(CLASSES.find(c => c.k === k).cor);
   tabela($('#cTbl'), 'cart', [
-    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${corDe(l.cl)}" title="${CLASSES.find(c => c.k === l.cl).nome}"></i><b>${esc(l.nome)}</b> <span class="sub">${l.emissor ? esc(l.emissor) + ' · ' : ''}${l.acao ? '~' + Math.floor(l.v / l.acao.last) + (l.acao.fii ? ' cotas' : ' ações') : l.prazo ? 'vence em ' + Math.round(l.prazo / 30) + 'm' : l.etf ? 'ETF' : 'resgate diário'}<span class="so-mob"> · ${esc(l.onde)}</span></span>${l.trade ? `<br><span class="sub num">entrada R$ ${nf(l.trade.entrada, 2)} · stop <span class="down">R$ ${nf(l.trade.stop, 2)}</span> · alvo <span class="up">R$ ${nf(l.trade.alvo, 2)}</span></span>` : ''}`, v: l => CLASSES.findIndex(c => c.k === l.cl), asc: 1 },
+    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${corDe(l.cl)}" title="${CLASSES.find(c => c.k === l.cl).nome}"></i><b>${l.acao ? linkAtivo(l.acao.sym) : esc(l.nome)}</b> <span class="sub">${l.emissor ? esc(l.emissor) + ' · ' : ''}${l.acao ? '~' + Math.floor(l.v / l.acao.last) + (l.acao.fii ? ' cotas' : ' ações') : l.prazo ? 'vence em ' + Math.round(l.prazo / 30) + 'm' : l.etf ? 'ETF' : 'resgate diário'}<span class="so-mob"> · ${esc(l.onde)}</span></span>${l.trade ? `<br><span class="sub num">entrada R$ ${nf(l.trade.entrada, 2)} · stop <span class="down">R$ ${nf(l.trade.stop, 2)}</span> · alvo <span class="up">R$ ${nf(l.trade.alvo, 2)}</span></span>` : ''}`, v: l => CLASSES.findIndex(c => c.k === l.cl), asc: 1 },
     { k: 'o', h: 'Plataforma', cls: 'so-desk', f: l => esc(l.onde), v: l => l.onde, asc: 1 },
     { k: 'p', h: '%', r: 1, f: l => `<b class="num">${pct(l.v / V, 1)}</b>`, v: l => l.v },
     { k: 'v', h: 'Valor', r: 1, f: l => `<span class="num">${brl(l.v)}</span>`, v: l => l.v },
@@ -682,7 +682,24 @@ function renderSliders(w, on) {
 }
 
 /* ================= ações ================= */
-let aSel = null;
+let aSel = null, APER = store.get('af2.aper', 252), VOLTA = null;
+/* nome de ação/FII clicável em qualquer tabela: leva ao gráfico na aba Ações */
+const linkAtivo = sym => `<a href="#acoes" class="tk" data-ativo="${esc(sym)}" title="ver o gráfico de ${esc(sym)} ao longo do tempo">${esc(sym)}</a>`;
+function abrirAtivo(sym) {
+  if (!U[sym] && !UF[sym]) return;
+  const aba = document.querySelector('section.tab.on')?.id.replace('tab-', '');
+  VOLTA = aba && aba !== 'acoes' ? { aba, y: scrollY } : VOLTA;
+  $('#aTipo').value = UF[sym] && !U[sym] ? 'fii' : 'acoes';
+  $('#aBusca').value = ''; $('#aSinal').value = ''; $('#aSetor').value = '';
+  aSel = sym; goto('acoes'); renderAcoes();
+  const tr = $('#aTbl tr.sel'), box = tr?.closest('.scroll');   // a linha do ativo fica visível na tabela
+  if (box) box.scrollTop = tr.offsetTop - box.clientHeight / 2;
+  $('#aChCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-ativo]'); if (!a) return;
+  e.preventDefault(); e.stopPropagation(); abrirAtivo(a.dataset.ativo);
+}, true);
 function renderAcoes() {
   const q = $('#aBusca').value.trim().toUpperCase(), se = $('#aSetor').value, sn = $('#aSinal').value, fii = $('#aTipo').value === 'fii', SRC = fii ? UF : U;
   const setores = [...new Set(Object.values(SRC).map(a => a.setor))].sort(), selS = $('#aSetor');
@@ -707,7 +724,15 @@ function renderAcoes() {
   ], rows, { sort: { k: 'pv', dir: -1 }, rerender: renderAcoes, rowCls: a => a.sym === aSel ? 'sel' : '', onRow: a => { aSel = a.sym; renderAcoes(); }, empty: D ? 'Nenhuma ação com esses filtros.' : 'Sem dados de ações (dados.js ausente).' });
   const a = SRC[aSel]; if (!a) return;
   $('#aChTitle').textContent = `${a.sym} · ${a.nome || a.setor}`;
-  const n = a.x.c.length, ini = Math.max(0, n - 252), sl = arr => arr.slice(ini);
+  // período efetivo: o escolhido, ou o maior que o histórico deste ativo comporta (FII tem 1 ano)
+  const n = a.x.c.length, per = [504, 252, 126, 63].find(v => v <= APER && periodoDisponivel(v, n)) || 63, ini = Math.max(0, n - per), sl = arr => arr.slice(ini);
+  document.querySelectorAll('#aPer button').forEach(b => { b.classList.toggle('on', +b.dataset.v === per); b.disabled = !periodoDisponivel(+b.dataset.v, n); });
+  // período, variação no período e, se a pessoa tem o ativo, a posição dela
+  const varP = a.x.c[n - 1] / a.x.c[ini] - 1, desde = new Date(a.x.t[ini] * 1000).toLocaleDateString('pt-BR');
+  const meus = typeof HOLD !== 'undefined' ? HOLD.filter(h => typeof tickerDe === 'function' && tickerDe(h) === a.sym) : [];
+  const qtd = meus.reduce((s, h) => s + (+h.qtd || 0), 0), val = meus.reduce((s, h) => s + (typeof valorDe === 'function' ? valorDe(h) : 0), 0);
+  $('#aChSub').innerHTML = `Desde ${desde}: <b class="${cls(varP)}">${sgnPct(varP)}</b> · preço com MM20, MM50 e MM200${meus.length ? ` · <b>na sua carteira: ${qtd ? `${nf(qtd)} ${a.fii ? 'cotas' : 'ações'} · ` : ''}${brl(val)}</b>` : ''}`;
+  $('#aVoltar').hidden = !VOLTA;
   chart('chAcao', { type: 'line', data: { labels: sl(a.x.t).map(t => new Date(t * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })), datasets: [
     { label: 'Preço', data: sl(a.x.c), borderColor: css('--c1'), pointRadius: 0, borderWidth: 2 },
     { label: 'MM20', data: sl(a.I.sma[20]), borderColor: css('--c2'), pointRadius: 0, borderWidth: 1.2 },
@@ -795,6 +820,8 @@ document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => goto(b.d
 $('#simClose').onclick = () => { SIM.o = null; $('#simCard').hidden = true; renderRF(); };
 ['#cValor', '#cPrazo', '#cPerfil', '#cPlat', '#cRes', '#cCap', '#cCustom', '#cObj'].forEach(id => $(id).addEventListener('input', renderCarteira));
 ['#aTipo', '#aBusca', '#aSetor', '#aSinal'].forEach(id => $(id).addEventListener('input', renderAcoes));
+document.querySelectorAll('#aPer button').forEach(b => b.onclick = () => { APER = +b.dataset.v; store.set('af2.aper', APER); renderAcoes(); });
+$('#aVoltar').onclick = () => { const v = VOLTA; VOLTA = null; if (!v) return; goto(v.aba); setTimeout(() => scrollTo({ top: v.y, behavior: 'smooth' }), 50); };
 ['#nBusca', '#nCat', '#nTk', '#nSent'].forEach(id => $(id).addEventListener('input', renderNoticias));
 $('#offAdd').onclick = () => { OFF.unshift({ plat: 'XP', tipo: 'LCA', emissor: '', idx: 'CDI', taxa: 90, prazo: 720, min: 1000, liq: false }); saveOff(); renderOffEditor(); };
 $('#offReset').onclick = () => { if (confirm('Descartar suas edições e voltar para o ofertas.js?')) { try { localStorage.removeItem('af2.offers'); } catch {} OFF = BASE_OFF(); renderOffEditor(); renderChips(); renderRF(); renderCarteira(); } };

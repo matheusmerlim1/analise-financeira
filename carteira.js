@@ -306,7 +306,7 @@ function renderExist() {
   const ap = planoAporte(d); d.aporte = ap;
   $('#eApSub').textContent = p.aporte ? `${brl(p.aporte)} · ${p.prazo} meses · ${OBJETIVOS[p.obj].split(' (')[0].toLowerCase()}` : 'informe o valor';
   tabela($('#eAp'), 'eAp', [
-    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${css(CLASSES.find(c => c.k === l.cl).cor)}"></i><b>${l.nome}</b>${l.trade ? `<br><span class="sub num">stop <span class="down">R$ ${nf(l.trade.stop, 2)}</span> · alvo <span class="up">R$ ${nf(l.trade.alvo, 2)}</span></span>` : ''}` },
+    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${css(CLASSES.find(c => c.k === l.cl).cor)}"></i><b>${l.acao ? linkAtivo(l.acao.sym) + l.nome.slice(l.acao.sym.length) : l.nome}</b>${l.trade ? `<br><span class="sub num">stop <span class="down">R$ ${nf(l.trade.stop, 2)}</span> · alvo <span class="up">R$ ${nf(l.trade.alvo, 2)}</span></span>` : ''}` },
     { k: 'o', h: 'Plataforma', f: l => esc(l.onde) },
     { k: 'v', h: 'Valor', r: 1, f: l => `<b class="num">${brl(l.v)}</b> <span class="sub num">${pct(l.v / (p.aporte || 1), 0)}</span>` },
     { k: 'r', h: 'Ret. a.a.', r: 1, f: l => l.retDy ? `<span class="num">DY ${pct(l.ret, 1)}</span>` : l.ret != null ? `<span class="num">${pct(l.ret)}</span>` : l.acao ? pillNivel(l.acao.prev) : '' }
@@ -533,7 +533,7 @@ function renderAvaliacao(d) {
   const top = new Set(ordem.slice(0, 3)), pior = new Set(ordem.slice(-3).filter(x => ret(x) < benchCDI()));
   $('#eAvSub').innerHTML = ordem.length ? `Melhores em 12 meses: ${ordem.slice(0, 3).map(x => `<b class="up">${x.tk} ${sgnPct(ret(x))}</b>`).join(', ')}${pior.size ? ` · piores: ${[...pior].map(x => `<b class="down">${x.tk} ${sgnPct(ret(x))}</b>`).join(', ')}` : ''}` : 'Retorno de 12 meses aparece para ações e FIIs cotados.';
   tabela($('#eAv'), 'eAv', [
-    { k: 'a', h: 'Investimento', w: 1, f: x => `<b>${esc(x.tk || x.h.ativo)}</b> <span class="sub">${esc(x.a ? x.a.setor : x.h.tipo)}${x.h.inst ? ' · ' + esc(x.h.inst) : ''}</span>`, v: x => x.tk || x.h.ativo, asc: 1 },
+    { k: 'a', h: 'Investimento', w: 1, f: x => `<b>${x.a ? linkAtivo(x.tk) : esc(x.tk || x.h.ativo)}</b> <span class="sub">${esc(x.a ? x.a.setor : x.h.tipo)}${x.h.inst ? ' · ' + esc(x.h.inst) : ''}</span>`, v: x => x.tk || x.h.ativo, asc: 1 },
     { k: 'q', h: 'Qtd.', r: 1, f: x => x.h.qtd ? `<span class="num">${nf(x.h.qtd)}</span>` : '', v: x => +x.h.qtd || 0 },
     { k: 'v', h: 'Valor (editável)', r: 1, f: x => `<input class="n num" type="number" step="100" data-av-valor="${HOLD.indexOf(x.h)}" value="${x.v > 0 ? Math.round(x.v * 100) / 100 : ''}" placeholder="falta" style="width:96px;border:1px solid var(--line);background:var(--panel-2)" title="corrija o valor de hoje; o patrimônio é recalculado">`, v: x => x.v },
     { k: 'p', h: '%', r: 1, f: x => `<span class="num">${pct(x.v / T, 1)}</span>`, v: x => x.v },
@@ -584,7 +584,7 @@ function renderSnap(d) {
   if (nMud) resumo.push(`<b>${nMud} investimento(s) mudaram de avaliação</b> — veja a tabela.`);
   $('#eSnapTxt').innerHTML = resumo.join('<br>');
   tabela($('#eSnap'), 'eSnap', [
-    { k: 'a', h: 'Investimento', f: r => `<b>${esc(r.o.chave)}</b>` },
+    { k: 'a', h: 'Investimento', f: r => `<b>${r.x.a ? linkAtivo(r.x.tk) : esc(r.o.chave)}</b>` },
     { k: 'p', h: 'Preço então → hoje', r: 1, f: r => r.o.preco && r.x.a ? `<span class="num">${nf(r.o.preco, 2)} → ${nf(r.x.a.last, 2)}</span> <span class="num ${cls(ch(r.x.a.last, r.o.preco))}">${sgnPct(ch(r.x.a.last, r.o.preco))}</span>` : '', v: r => r.o.preco && r.x.a ? ch(r.x.a.last, r.o.preco) : -9 },
     { k: 'v', h: 'Valor então → hoje', r: 1, f: r => `<span class="num">${brl(r.o.valor)} → ${brl(r.x.v)}</span>`, v: r => r.x.v - r.o.valor },
     { k: 's', h: 'Previsão então → hoje', f: r => r.o.prev != null && r.x.a ? `${pillNivel(r.o.prev)} → ${pillNivel(r.x.a.prev)}` : '' },
