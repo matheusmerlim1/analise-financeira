@@ -246,7 +246,7 @@ function renderExist() {
     { k: 't', h: `Alvo (${p.perfil})`, r: 1, f: r => `<span class="num">${pct(d.alvo[r.k] ?? 0, 0)}</span> <span class="sub num">${brl((d.alvo[r.k] ?? 0) * d.total)}</span>` },
     { k: 's', h: '', f: r => { const x = d.atual[r.k] / T - (d.alvo[r.k] ?? 0); return !d.total ? '' : Math.abs(x) <= .05 ? '<span class="pill up">ok</span>' : `<span class="pill ${Math.abs(x) > .15 ? 'down' : 'warn'}">${x > 0 ? 'reduzir' : 'aumentar'} ${pct(Math.abs(x), 0)}</span>`; } }
   ], CL_EXT.filter(c => c.k !== 'outros' || d.atual.outros), { rerender: renderExist });
-  renderAvaliacao(d); renderRenda(d); renderSnap(d);
+  renderPatrimonio(d); renderAvaliacao(d); renderRenda(d); renderSnap(d);
   const sevPill = s => ({ alta: '<span class="pill down">importante</span>', 'média': '<span class="pill warn">médio</span>', baixa: '<span class="pill flat">leve</span>', info: '<span class="pill acc">info</span>', ok: '<span class="pill up">ok</span>' }[s]);
   tabela($('#eFind'), 'eF', [{ k: 's', h: '', f: r => sevPill(r.sev) }, { k: 't', h: 'O que encontrei', w: 1, f: r => r.txt }], d.total ? d.F : [], { rerender: renderExist, empty: 'Adicione ou importe seus investimentos.' });
   const ap = planoAporte(d); d.aporte = ap;
@@ -264,6 +264,37 @@ function renderExist() {
   ].filter(Boolean).map(x => `<span>${x}</span>`).join('<br>');
   const acima = CLASSES.filter(c => d.total && d.atual[c.k] / T - d.alvo[c.k] > .05);
   $('#eRebal').innerHTML = acima.length ? `Para alinhar sem aporte, seria preciso reduzir ${acima.map(c => `<b>${c.nome.split(' (')[0].toLowerCase()}</b> (${brl(d.atual[c.k] - d.alvo[c.k] * T)})`).join(' e ')}. Antes de vender, veja o imposto: vendas de ações até R$ 20 mil no mês são isentas; FIIs, ETFs e renda fixa resgatada antes do vencimento pagam IR.` : '';
+  renderStrip(d.pv);  // atualiza o "Seu patrimônio" da faixa de indicadores
+}
+/* patrimônio total, por classe, por tipo e por instituição */
+function patrimonioAtual() {
+  const val = HOLD.map(valorDe).filter(v => v > 0);
+  return { total: val.reduce((a, b) => a + b, 0), n: HOLD.length, semValor: HOLD.length - val.length };
+}
+function renderPatrimonio(d) {
+  const T = d.total, val = d.itens.filter(x => x.v > 0), sem = d.itens.length - val.length;
+  $('#patTotal').textContent = T ? brl(T) : 'R$ 0';
+  const ganho12 = val.reduce((s, x) => s + (x.a ? x.v - x.v / (1 + x.a.r12) : 0), 0), rv = val.filter(x => x.a).reduce((s, x) => s + x.v, 0);
+  const renda12 = val.reduce((s, x) => s + (x.a ? x.v * x.a.dy : 0), 0);
+  $('#patSub').innerHTML = !d.itens.length ? 'importe seus extratos ou adicione investimentos' :
+    `${val.length} investimentos com valor${sem ? ` · <span class="warn" style="color:var(--warn)">${sem} sem valor (fora da soma)</span>` : ''}${Object.keys(EXTRATOS).length || HOLD.some(h => h.src) ? ` · ${new Set(HOLD.map(h => h.src).filter(Boolean)).size} arquivo(s)` : ''}`;
+  $('#patKv').innerHTML = !T ? '' : [
+    ['Renda fixa e reserva', brl(d.atual.res + d.atual.pos + d.atual.trav)],
+    ['Renda variável (ações e FIIs)', brl(d.atual.acoes)],
+    d.atual.outros ? ['Fundos, COE e outros', brl(d.atual.outros)] : null,
+    rv ? ['Variação de preço em 12 meses', `<span class="${cls(ganho12)}">${ganho12 >= 0 ? '+' : ''}${brl(ganho12)}</span> <span class="sub">nas ações e FIIs</span>`] : null,
+    renda12 ? ['Proventos estimados', `<b class="up">${brl(renda12 / 12)}/mês</b>`] : null
+  ].filter(Boolean).map(([k, v]) => `<span>${k}</span><b class="num">${v}</b>`).join('');
+  const porTipo = {}; val.forEach(x => porTipo[x.h.tipo] = (porTipo[x.h.tipo] || 0) + x.v);
+  const tipos = Object.entries(porTipo).sort((a, b) => b[1] - a[1]), cores = ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6', '--ink-3'];
+  chart('chPat', { type: 'doughnut', data: { labels: tipos.map(t => t[0]), datasets: [{ data: tipos.map(t => Math.round(t[1])), backgroundColor: tipos.map((_, i) => css(cores[i % cores.length])), borderColor: css('--panel'), borderWidth: 2 }] },
+    options: { ...base(), cutout: '60%', plugins: { legend: { position: 'right', labels: { color: css('--ink-2'), boxWidth: 9, font: { size: 10 } } }, tooltip: { callbacks: { label: c => ` ${c.label}: ${brl(c.raw)} (${pct(c.raw / (T || 1), 1)})` } } } } });
+  const porInst = {}; val.forEach(x => { const k = (x.h.inst || 'sem instituição').replace(/\s+(INVESTIMENTOS|CCTVM|S\/?A|S\.A\.).*$/i, '').trim() || 'sem instituição'; porInst[k] = (porInst[k] || 0) + x.v; });
+  tabela($('#patInst'), 'patInst', [
+    { k: 'i', h: 'Onde está', f: r => `<b>${esc(r[0])}</b>`, v: r => r[0], asc: 1 },
+    { k: 'v', h: 'Valor', r: 1, f: r => `<span class="num">${brl(r[1])}</span>`, v: r => r[1] },
+    { k: 'p', h: '%', r: 1, f: r => `<span class="num">${pct(r[1] / (T || 1), 0)}</span>`, v: r => r[1] }
+  ], Object.entries(porInst), { sort: { k: 'v', dir: -1 }, rerender: () => renderPatrimonio(d), empty: 'Sem investimentos com valor.' });
 }
 function renderAvaliacao(d) {
   const linhas = d.itens.filter(x => x.v > 0 || x.h.qtd || x.h.nota);

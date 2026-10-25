@@ -346,7 +346,11 @@ function renderStrip(pv) {
     ['Previsão Ibov', pv ? nivel(pv.score).l : '—', '4 semanas'],
     ['Notícias', nl.label, nl.h ? `${nl.h.pos}+ / ${nl.h.neg}− (7d)` : '']
   ];
-  $('#strip').innerHTML = t.map(([l, v, d]) => `<div class="tile"><div class="l">${l}</div><div class="v num">${v}</div><div class="d">${d}</div></div>`).join('');
+  // patrimônio do usuário (carteira.js), quando já há investimentos cadastrados
+  const pat = typeof patrimonioAtual === 'function' ? patrimonioAtual() : null;
+  if (pat?.total) t.unshift(['Seu patrimônio', brl(pat.total), `${pat.n} investimentos${pat.semValor ? ` · ${pat.semValor} sem valor` : ''}`, 'carteira']);
+  $('#strip').innerHTML = t.map(([l, v, d, ir]) => `<div class="tile"${ir ? ` data-ir="${ir}" style="cursor:pointer;border-color:var(--accent)" title="abrir minha carteira"` : ''}><div class="l">${l}</div><div class="v num">${v}</div><div class="d">${d}</div></div>`).join('');
+  $('#strip').querySelectorAll('[data-ir]').forEach(el => el.onclick = () => { goto(el.dataset.ir); if (typeof modo === 'function') modo('exist'); });
   const st = $('#status');
   st.className = 'status ' + (M.ok && D ? 'ok' : 'err');
   st.innerHTML = `<i></i>${M.ok ? 'BCB ao vivo' : 'BCB indisponível (valores de 25/10/2026)'} · ${D ? 'mercado ' + tempoRel(D.geradoEm) : 'sem dados.js'}`;
