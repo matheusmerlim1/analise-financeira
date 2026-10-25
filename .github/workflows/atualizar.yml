@@ -1,0 +1,58 @@
+# Coleta cotações e notícias e publica o site no GitHub Pages.
+# Roda a cada 30 min no pregão da B3 (10h–17h de Brasília = 13h–20h UTC), a cada 2 h no resto
+# do tempo, e sempre que algo é enviado para a main (ex.: edição do ofertas.js).
+name: Atualizar e publicar
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/30 13-20 * * 1-5"
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Baixar a coleta anterior (reserva se alguma fonte falhar)
+        run: curl -sfL "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/dados.js" -o dados.js || true
+
+      - name: Coletar cotações e notícias
+        env:
+          BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
+        run: python atualizar_dados.py
+
+      - name: Montar o site
+        run: |
+          mkdir _site
+          cp index.html app.js ofertas.js dados.js _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
