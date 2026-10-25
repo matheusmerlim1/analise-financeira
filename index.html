@@ -198,6 +198,25 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
           <div class="scroll short"><table id="patInst"></table></div>
         </div>
       </div>
+      <div class="card" id="evoCard" style="margin-bottom:10px">
+        <div class="row sp">
+          <div><h2>Evolução do patrimônio</h2><p class="sub" id="evoSub"></p></div>
+          <div class="row">
+            <div class="seg" id="evoPer" style="margin:0"><button data-v="21">1M</button><button data-v="63">3M</button><button data-v="126">6M</button><button data-v="252">1A</button><button data-v="504">2A</button></div>
+            <div class="seg" id="evoModo" style="margin:0"><button data-v="valor">R$</button><button data-v="pct">%</button></div>
+            <select id="evoAgr"><option value="total">Total</option><option value="classe">Por classe</option><option value="ativo">Por investimento</option></select>
+          </div>
+        </div>
+        <div class="row mt">
+          <label class="ck"><input type="checkbox" id="evoCdi"> comparar com CDI</label>
+          <label class="ck"><input type="checkbox" id="evoIbov"> comparar com Ibovespa</label>
+          <label class="ck"><input type="checkbox" id="evoProv"> incluir proventos (estimado)</label>
+          <label class="ck"><input type="checkbox" id="evoReal" checked> mostrar registros reais</label>
+        </div>
+        <div class="chips mt" id="evoSeries"></div>
+        <div class="chart mt" style="height:300px"><canvas id="chEvo"></canvas></div>
+        <p class="sub mt">Simulação com as quantidades de hoje aplicadas aos preços de cada dia (ações e FIIs) e o valor de hoje descontado para trás pelo CDI diário ou pela taxa do título (renda fixa, fundos, COE). Os pontos são o patrimônio real registrado nos dias em que você abriu a página ou salvou a carteira.</p>
+      </div>
       <div class="grid g12">
         <div class="card">
           <h2>Sua carteira atual</h2>
@@ -217,6 +236,7 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
             <label class="f">Plataforma do aporte<select id="ePlat"></select></label>
             <label class="f">Máx. por ação (%)<input id="eCap" type="number" min="1" max="50" value="8"></label>
           </div>
+          <div id="eApRapido" class="mt" style="border:1px solid var(--accent);background:var(--accent-soft);border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.55"></div>
         </div>
         <div class="card">
           <div class="row sp"><h2>Diagnóstico</h2><span class="sub" id="eTotal"></span></div>
@@ -248,7 +268,7 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
       </div>
       <div class="grid g2 mt">
         <div class="card"><h2>Pontos de atenção</h2><div class="scroll short mt"><table id="eFind"></table></div></div>
-        <div class="card"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="mt" id="eApProj" style="font-size:12.5px;line-height:1.6"></p><p class="sub mt" id="eRebal"></p></div>
+        <div class="card" id="eApCard"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="mt" id="eApProj" style="font-size:12.5px;line-height:1.6"></p><p class="sub mt" id="eRebal"></p></div>
       </div>
       <div class="card mt">
         <div class="row sp"><h2>Análise com IA (Claude)</h2><span class="pill acc">opcional</span></div>

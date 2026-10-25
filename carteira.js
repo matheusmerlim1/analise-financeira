@@ -29,6 +29,21 @@ function valorDe(h) {
 }
 
 /* ================= importação (vários arquivos, de vários bancos) ================= */
+/* o mesmo título pode vir do extrato (sem valor) e do informe (com valor): casa pelo código e completa */
+function juntarPorCodigo(novos) {
+  const usados = new Set();
+  novos.filter(n => n.codigo).forEach(n => {
+    const h = HOLD.find(x => x.codigo === n.codigo || String(x.ativo || '').includes(n.codigo));
+    if (!h) return;
+    if (!(+h.valor > 0) && n.valor > 0) { h.valor = n.valor; h.nota = n.nota; }
+    h.codigo = h.codigo || n.codigo; h.venc = h.venc || n.venc; h.idx = h.idx || n.idx;
+    if (!h.inst || h.inst === 'XP') h.inst = n.inst || h.inst;
+    usados.add(n);
+  });
+  return usados;
+}
+/* instituições com liquidação decretada: instituicaoLiquidada() em calculos.js */
+const liquidada = instituicaoLiquidada;
 function carregarLib(src, global) {
   if (window[global]) return Promise.resolve(window[global]);
   return new Promise((ok, fail) => { const s = document.createElement('script'); s.src = src; s.onload = () => ok(window[global]); s.onerror = () => fail(new Error('não foi possível carregar ' + src)); document.head.appendChild(s); });
@@ -58,6 +73,10 @@ async function lerArquivo(file) {
   }
   if (ext === 'pdf') {
     const linhas = await textoDoPDF(file), texto = linhas.join('\n');
+    if (ehInformeXP(texto)) {
+      const inf = lerInformeXP(texto);
+      return { linhas: carteiraDoInformeXP(inf, src), resumo: { banco: 'XP', tipo: 'informe', ...resumoInformeXP(inf) } };
+    }
     if (ehExtratoXP(texto)) {
       const ex = lerExtratoXP(texto);
       return { linhas: carteiraDoExtratoXP(ex, src, [...Object.keys(U), ...Object.keys(UF)]), resumo: { banco: 'XP', ...resumoExtratoXP(ex) } };
@@ -74,10 +93,12 @@ async function importar(files) {
       const r = await lerArquivo(file);
       if (r.json) { abrirJSON(r.json); res.push(`<b class="up">${esc(file.name)}</b>: carteira salva aberta`); continue; }
       if (!r.linhas.length) { res.push(`<b class="down">${esc(file.name)}</b>: nenhum investimento encontrado`); continue; }
-      HOLD = HOLD.filter(h => h.src !== file.name).concat(r.linhas);   // reimportar o mesmo arquivo substitui, não duplica
+      HOLD = HOLD.filter(h => h.src !== file.name);   // reimportar o mesmo arquivo substitui, não duplica
+      const juntou = juntarPorCodigo(r.linhas);
+      HOLD = HOLD.concat(r.linhas.filter(l => !juntou.has(l)));
       if (r.resumo) EXTRATOS[file.name] = r.resumo; else delete EXTRATOS[file.name];
       const semValor = r.linhas.filter(h => !(valorDe(h) > 0)).length;
-      res.push(`<b class="up">${esc(file.name)}</b>: ${r.linhas.length} itens${r.resumo ? ' (extrato de movimentação da XP)' : ''}${semValor ? `, <span class="warn">${semValor} sem valor — complete na tabela</span>` : ''}${r.ir ? ' · valores de custo em 31/12' : ''}`);
+      res.push(`<b class="up">${esc(file.name)}</b>: ${r.linhas.length} itens${r.resumo?.tipo === 'informe' ? ` (informe de rendimentos ${r.resumo.ano})` : r.resumo ? ' (extrato de movimentação da XP)' : ''}${juntou.size ? `, ${juntou.size} completaram itens que já estavam na carteira` : ''}${semValor ? `, <span class="warn">${semValor} sem valor — complete na tabela</span>` : ''}${r.ir ? ' · valores de custo em 31/12' : ''}`);
     } catch (e) { res.push(`<b class="down">${esc(file.name)}</b>: ${esc(e.message)}`); }
   }
   salvarHold(); renderExist();
@@ -99,6 +120,8 @@ function avaliarInvestimento(x) {
     if (tot >= b + .03 && a.prev > -.1) return { v: 'Indo bem', c: 'up', ord: 5, m: base };
     return { v: 'Manter', c: 'flat', ord: 4, m: base };
   }
+  const lq = liquidada(h);
+  if (lq) return { v: 'Banco liquidado', c: 'down', ord: 0, m: `${lq.nome}: liquidação extrajudicial decretada pelo Banco Central em ${lq.quando}. O valor depende do pagamento do FGC (até R$ 250 mil por CPF por conglomerado). Confira no app do FGC.` };
   switch (h.tipo) {
     case 'Poupança': return { v: 'Retirar', c: 'down', ord: 1, m: `Poupança rende ~${pct(Math.pow(1.005 * (1 + M.trMes), 12) - 1, 1)} ao ano; Tesouro Selic ou CDB de liquidez diária a 100% do CDI rendem ~${pct(b, 1)} líquido.` };
     case 'Conta corrente': return { v: 'Aplicar', c: 'warn', ord: 2, m: 'Dinheiro parado sem render. Leve para Tesouro Selic ou CDB de liquidez diária.' };
@@ -141,7 +164,7 @@ function diagnosticar() {
   const cc = soma(x => x.h.tipo === 'Conta corrente'); if (cc / total > .05) pen(5, 'média', `${brl(cc)} parado em conta (${pct(cc / total, 0)}), sem render.`);
   if (atual.res / total < .05 && p.perfil !== 'arrojado') pen(8, 'alta', `Reserva de liquidez de só ${pct(atual.res / total, 0)}: numa emergência você teria de vender algo no prejuízo.`);
   val.filter(x => x.cl === 'acoes' && x.h.tipo === 'Ação').forEach(x => { if (x.v / total > p.cap * 1.5) pen(8, 'alta', `${x.h.ativo} é ${pct(x.v / total, 1)} da carteira, acima do teto de ${pct(p.cap, 0)} por ação.`); });
-  const porEm = {}; val.filter(x => FGC.has(x.h.tipo)).forEach(x => { const k = (x.h.inst || x.h.ativo).toUpperCase(); porEm[k] = (porEm[k] || 0) + x.v; });
+  const porEm = {}; val.filter(x => FGC.has(x.h.tipo)).forEach(x => { const k = liquidada(x.h)?.nome.toUpperCase() || (x.h.inst || x.h.ativo).toUpperCase(); porEm[k] = (porEm[k] || 0) + x.v; });
   Object.entries(porEm).filter(([, v]) => v > 250000).forEach(([k, v]) => pen(10, 'alta', `${brl(v)} em títulos com FGC de ${k}: acima do limite de R$ 250 mil por instituição.`));
   const nAcoes = new Set(val.filter(x => x.h.tipo === 'Ação').map(x => x.tk || x.h.ativo)).size, nFii = val.filter(x => x.h.tipo === 'FII').length;
   if (atual.acoes > 0 && nAcoes + nFii < 4 && !val.some(x => x.h.tipo === 'ETF')) pen(6, 'média', `Só ${nAcoes + nFii} ativo(s) de renda variável: pouca diversificação.`);
@@ -151,7 +174,10 @@ function diagnosticar() {
   const faltam = itens.filter(x => !(x.v > 0)).length;
   if (faltam) F.push({ sev: 'info', txt: `${faltam} item(ns) sem valor ficaram fora da conta. Complete quantidade ou valor na tabela "Seus ativos".` });
   // custos cobrados (extratos)
-  const ext = Object.values(EXTRATOS); const taxas = ext.reduce((s, e) => s + e.taxas, 0), meses = ext.reduce((s, e) => s + mesesPeriodo(e), 0) || 1;
+  const ext = Object.values(EXTRATOS).filter(e => e.tipo !== 'informe'); const taxas = ext.reduce((s, e) => s + (e.taxas || 0), 0), meses = ext.reduce((s, e) => s + mesesPeriodo(e), 0) || 1;
+  // instituições em liquidação: o dinheiro depende do FGC
+  const liq = val.filter(x => liquidada(x.h));
+  if (liq.length) { const v = liq.reduce((s, x) => s + x.v, 0); pen(14, 'alta', `${brl(v)} em ${liq.length} título(s) do ${liquidada(liq[0].h).nome}, que teve liquidação extrajudicial decretada pelo Banco Central em ${liquidada(liq[0].h).quando}. O FGC cobre até R$ 250 mil por CPF por conglomerado (principal + juros até a liquidação). Confira no app do FGC se o pagamento já saiu; se já recebeu, remova esses itens.`); }
   if (taxas > 0) { const anual = taxas / meses * 12; pen(anual / total > .01 ? 6 : 2, anual / total > .01 ? 'alta' : 'baixa', `Taxas cobradas na conta (${ext.flatMap(e => e.taxasNome).join(', ')}): ~${brl(anual)} por ano, ${pct(anual / total, 2)} do patrimônio.${anual / total > .01 ? ' Mais de 1% ao ano come boa parte do rendimento.' : ''}`); }
   if (M.selic - selicAt(12) > .005 && atual.trav / total < .1 && p.prazo >= 24) F.push({ sev: 'média', txt: `Focus vê Selic ${pct(M.selic - selicAt(12))} menor em 12 meses e só ${pct(atual.trav / total, 0)} está travado em pré/IPCA+.` });
   if (!F.length) F.push({ sev: 'ok', txt: 'Nenhum problema encontrado: a carteira está dentro do alvo do seu perfil.' });
@@ -197,7 +223,7 @@ function retrato(d) {
 }
 function exportarJSON(holdings, extra = {}) {
   const d = EXIST || diagnosticar();
-  const obj = { app: 'analise-financeira', versao: 1, salvoEm: new Date().toISOString(), config: perfilExist(), holdings, extratos: EXTRATOS, snapshot: retrato(d), ...extra };
+  const obj = { app: 'analise-financeira', versao: 1, salvoEm: new Date().toISOString(), config: perfilExist(), holdings, extratos: EXTRATOS, historico: HIST, snapshot: retrato(d), ...extra };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }));
   a.download = `carteira-${new Date().toISOString().slice(0, 10)}.json`; a.click();
@@ -206,6 +232,10 @@ function abrirJSON(j) {
   if (j.app !== 'analise-financeira' || !Array.isArray(j.holdings)) throw new Error('não é um arquivo de carteira deste site');
   HOLD = j.holdings; EXTRATOS = j.extratos || {}; SNAP = j.snapshot ? { ...j.snapshot, salvoEm: j.salvoEm } : null;
   store.set('af2.snap', SNAP);
+  // junta o histórico salvo no arquivo com o deste navegador (o dia do salvamento vira um ponto real)
+  HIST = { ...(j.historico || {}), ...HIST };
+  if (j.snapshot?.total && j.salvoEm) HIST[j.salvoEm.slice(0, 10)] = HIST[j.salvoEm.slice(0, 10)] || { total: j.snapshot.total, g: {} };
+  store.set('af2.hist', HIST);
   const c = j.config || {};
   if (c.perfil) $('#ePerfil').value = c.perfil; if (c.prazo) $('#ePrazo').value = c.prazo; if (c.aporte != null) $('#eAporte').value = c.aporte;
   if (c.res != null) $('#eRes').value = Math.round(c.res * 100); if (c.cap) $('#eCap').value = Math.round(c.cap * 100); if (c.obj) $('#eObj').value = c.obj;
@@ -246,7 +276,8 @@ function renderExist() {
     { k: 't', h: `Alvo (${p.perfil})`, r: 1, f: r => `<span class="num">${pct(d.alvo[r.k] ?? 0, 0)}</span> <span class="sub num">${brl((d.alvo[r.k] ?? 0) * d.total)}</span>` },
     { k: 's', h: '', f: r => { const x = d.atual[r.k] / T - (d.alvo[r.k] ?? 0); return !d.total ? '' : Math.abs(x) <= .05 ? '<span class="pill up">ok</span>' : `<span class="pill ${Math.abs(x) > .15 ? 'down' : 'warn'}">${x > 0 ? 'reduzir' : 'aumentar'} ${pct(Math.abs(x), 0)}</span>`; } }
   ], CL_EXT.filter(c => c.k !== 'outros' || d.atual.outros), { rerender: renderExist });
-  renderPatrimonio(d); renderAvaliacao(d); renderRenda(d); renderSnap(d);
+  registrarHistorico(d);
+  renderPatrimonio(d); renderEvolucao(d); renderAvaliacao(d); renderRenda(d); renderSnap(d);
   const sevPill = s => ({ alta: '<span class="pill down">importante</span>', 'média': '<span class="pill warn">médio</span>', baixa: '<span class="pill flat">leve</span>', info: '<span class="pill acc">info</span>', ok: '<span class="pill up">ok</span>' }[s]);
   tabela($('#eFind'), 'eF', [{ k: 's', h: '', f: r => sevPill(r.sev) }, { k: 't', h: 'O que encontrei', w: 1, f: r => r.txt }], d.total ? d.F : [], { rerender: renderExist, empty: 'Adicione ou importe seus investimentos.' });
   const ap = planoAporte(d); d.aporte = ap;
@@ -262,10 +293,98 @@ function renderExist() {
     ap.unica ? `Melhor opção única no prazo: <b>${ap.unica.o.tipo} ${fmtTaxa(ap.unica.o)}</b> (${ap.unica.o.plat}) → <b>${brl(ap.unica.a.final)}</b> em ${Math.round(ap.unica.a.diasTot / 30.4)} meses, ${pct(ap.unica.a.liqAA)} líquido a.a.` : '',
     ap.div ? `Para renda mensal: <b>${ap.div.sym}</b> (DY ${pct(ap.div.a.dy, 1)}) pagaria ~<b>${brl(p.aporte * ap.div.a.dy / 12)}/mês</b> isento de IR, com risco de preço.` : ''
   ].filter(Boolean).map(x => `<span>${x}</span>`).join('<br>');
+  // resposta rápida logo abaixo do campo "Investir mais"
+  $('#eApRapido').innerHTML = !p.aporte ? '<span class="sub">Digite em <b>Investir mais</b> quanto quer aplicar e o prazo: a melhor opção aparece aqui.</span>' : [
+    `<b>Melhor destino para ${brl(p.aporte)} em ${p.prazo} meses</b>`,
+    ap.unica ? `🏆 Opção única que mais rende: <b>${ap.unica.o.tipo} ${fmtTaxa(ap.unica.o)}</b> (${ap.unica.o.plat}) → <b class="up">${brl(ap.unica.a.final)}</b> no vencimento (${pct(ap.unica.a.liqAA)} líquido a.a.${ap.unica.a.ir ? '' : ', isento de IR'}${FGC.has(ap.unica.o.tipo) ? ', com FGC' : ap.unica.o.tipo.startsWith('Tesouro') ? ', Tesouro' : ''}).` : 'Nenhuma oferta de renda fixa cabe nesse valor e prazo.',
+    ap.linhas.length ? `⚖️ Para equilibrar a carteira (perfil ${p.perfil}): ${ap.linhas.slice().sort((a, b) => b.v - a.v).slice(0, 3).map(l => `<b>${l.nome.replace(/<[^>]+>/g, '').split('  ')[0]}</b> ${brl(l.v)}`).join(' · ')}${ap.linhas.length > 3 ? ` e mais ${ap.linhas.length - 3}` : ''} → <b>~${brl(ap.final)}</b> no prazo.` : '',
+    ap.div ? `💰 Para renda mensal: <b>${ap.div.sym}</b> (DY ${pct(ap.div.a.dy, 1)}) ≈ ${brl(p.aporte * ap.div.a.dy / 12)}/mês isento.` : '',
+    `<a href="#" id="eApVer" style="color:var(--accent);font-weight:600">ver o plano completo ↓</a>`
+  ].filter(Boolean).join('<br>');
+  const ver = $('#eApVer'); if (ver) ver.onclick = e => { e.preventDefault(); $('#eApCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
   const acima = CLASSES.filter(c => d.total && d.atual[c.k] / T - d.alvo[c.k] > .05);
   $('#eRebal').innerHTML = acima.length ? `Para alinhar sem aporte, seria preciso reduzir ${acima.map(c => `<b>${c.nome.split(' (')[0].toLowerCase()}</b> (${brl(d.atual[c.k] - d.alvo[c.k] * T)})`).join(' e ')}. Antes de vender, veja o imposto: vendas de ações até R$ 20 mil no mês são isentas; FIIs, ETFs e renda fixa resgatada antes do vencimento pagam IR.` : '';
   renderStrip(d.pv);  // atualiza o "Seu patrimônio" da faixa de indicadores
 }
+/* ================= evolução do patrimônio ================= */
+let HIST = store.get('af2.hist', {});   // patrimônio real de cada dia em que a página foi aberta: { 'AAAA-MM-DD': { total, g } }
+const EVO = Object.assign({ per: 252, modo: 'valor', agr: 'total', cdi: true, ibov: false, prov: false, real: true, off: [] }, store.get('af2.evo', {}));
+EVO.offInit = EVO.agr === 'ativo' && EVO.off.length > 0;
+const grupoEvo = x => x.h.tipo === 'FII' ? 'FIIs' : ['Ação', 'ETF', 'BDR'].includes(x.h.tipo) ? 'Ações' : ['res', 'pos', 'trav'].includes(x.cl) ? 'Renda fixa' : 'Fundos, COE e outros';
+const CORES_EVO = ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6'];
+const corSerie = i => i < CORES_EVO.length ? css(CORES_EVO[i]) : `hsl(${(i * 47) % 360} 65% 55%)`;
+const diaISO = ms => new Date(ms).toISOString().slice(0, 10);
+function registrarHistorico(d) {
+  if (!(d.total > 0)) return;
+  const g = {}; d.itens.filter(x => x.v > 0).forEach(x => { const k = grupoEvo(x); g[k] = (g[k] || 0) + x.v; });
+  HIST[diaISO(Date.now())] = { total: Math.round(d.total * 100) / 100, g };
+  store.set('af2.hist', HIST);
+}
+function dadosEvolucao(d) {
+  const ib = D?.indices?.ibov; if (!ib) return null;
+  const eixo = ib.t.slice(-EVO.per - 1).map(t => t * 1000), dias = eixo.map(diaISO), n = eixo.length;
+  const cdiDia = Object.keys(M.cdiDia || {}).length ? t => M.cdiDia[t] : () => Math.pow(1 + M.cdi, 1 / 252) - 1;
+  const alinhar = serie => {   // preço de cada dia do eixo, repetindo o último conhecido
+    if (!serie) return null;
+    const m = {}; serie.t.forEach((t, i) => m[diaISO(t * 1000)] = serie.c[i]);
+    let ult = null; return dias.map(dd => (m[dd] != null ? (ult = m[dd]) : ult));
+  };
+  const cresc = x => {
+    const h = x.h, taxa = +h.taxa || 0;
+    if (h.tipo === 'Conta corrente') return null;
+    if (h.tipo === 'Poupança') { const r = Math.pow(1.005 * (1 + M.trMes), 12 / 252) - 1; return indiceAcumulado(dias, () => r); }
+    if (h.idx === 'Pré' && taxa) { const r = Math.pow(1 + taxa / 100, 1 / 252) - 1; return indiceAcumulado(dias, () => r); }
+    if (h.idx === 'IPCA' && taxa) { const r = Math.pow((1 + M.ipca12) * (1 + taxa / 100), 1 / 252) - 1; return indiceAcumulado(dias, () => r); }
+    return indiceAcumulado(dias, cdiDia, h.idx === 'CDI' && taxa ? taxa / 100 : 1);
+  };
+  const itens = d.itens.filter(x => x.v > 0).map(x => {
+    const s = x.tk && (D.acoes[x.tk] || D.fiis?.[x.tk]);
+    return { chave: x.tk || x.h.ativo, grupo: grupoEvo(x), v: x.v, ...(s ? { precos: alinhar(s), dy: x.a?.dy || 0 } : { cresc: cresc(x) }) };
+  });
+  const r = evolucaoCarteira(eixo, itens, { proventos: EVO.prov });
+  const cdiIdx = indiceAcumulado(dias, cdiDia), ibAl = alinhar(ib);
+  return { eixo, dias, n, r, itens, cdiIdx, ibov: ibAl };
+}
+function renderEvolucao(d) {
+  const card = $('#evoCard'); card.hidden = !(d.total > 0); if (card.hidden) return;
+  document.querySelectorAll('#evoPer button').forEach(b => b.classList.toggle('on', +b.dataset.v === EVO.per));
+  document.querySelectorAll('#evoModo button').forEach(b => b.classList.toggle('on', b.dataset.v === EVO.modo));
+  $('#evoAgr').value = EVO.agr; $('#evoCdi').checked = EVO.cdi; $('#evoIbov').checked = EVO.ibov; $('#evoProv').checked = EVO.prov; $('#evoReal').checked = EVO.real;
+  const E = dadosEvolucao(d); if (!E) { $('#evoSub').textContent = 'Sem histórico de preços (dados.js ausente).'; return; }
+  const pctM = EVO.modo === 'pct', fmt = v => pctM ? `${v >= 0 ? '+' : ''}${v.toFixed(2).replace('.', ',')}%` : brl(v);
+  const conv = s => pctM ? rentabilidade(s) : s;
+  // séries conforme o agrupamento
+  let series;
+  if (EVO.agr === 'total') series = [{ nome: 'Patrimônio', s: E.r.total, forte: true }];
+  else if (EVO.agr === 'classe') series = Object.entries(E.r.grupos).sort((a, b) => b[1].at(-1) - a[1].at(-1)).map(([k, s]) => ({ nome: k, s }));
+  else {
+    series = Object.entries(E.r.ativos).sort((a, b) => (b[1].at(-1) || 0) - (a[1].at(-1) || 0)).map(([k, s]) => ({ nome: k, s }));
+    if (!EVO.offInit) { EVO.off = series.slice(8).map(x => x.nome); EVO.offInit = true; }   // por investimento: começa com os 8 maiores
+  }
+  series.forEach((x, i) => x.cor = x.forte ? css('--accent') : corSerie(i));
+  // comparação: no modo R$, "se o patrimônio inicial tivesse ficado no CDI / no Ibovespa"
+  const base0 = E.r.total.find(v => v > 0) || 1, bench = [];
+  if (EVO.cdi) bench.push({ nome: 'CDI', s: E.cdiIdx.map(c => base0 * c / E.cdiIdx[0]), cor: css('--ink-3'), tracejado: true });
+  if (EVO.ibov) { const b = E.ibov.find(v => v != null); bench.push({ nome: 'Ibovespa', s: E.ibov.map(c => c == null ? null : base0 * c / b), cor: css('--warn'), tracejado: true }); }
+  const todas = [...series, ...bench];
+  $('#evoSeries').innerHTML = todas.map(x => `<button class="chip ${EVO.off.includes(x.nome) ? '' : 'on'}" data-s="${esc(x.nome)}" style="${EVO.off.includes(x.nome) ? '' : `border-color:${x.cor};color:${x.cor}`}"><i class="dot" style="background:${x.cor}"></i>${esc(x.nome)}</button>`).join('');
+  $('#evoSeries').querySelectorAll('[data-s]').forEach(b => b.onclick = () => { const k = b.dataset.s; EVO.off = EVO.off.includes(k) ? EVO.off.filter(x => x !== k) : [...EVO.off, k]; salvarEvo(); renderEvolucao(EXIST); });
+  const ds = todas.filter(x => !EVO.off.includes(x.nome)).map(x => ({
+    label: x.nome, data: conv(x.s).map((y, i) => ({ x: E.eixo[i], y })), borderColor: x.cor, backgroundColor: x.cor,
+    borderWidth: x.forte ? 2.5 : 1.6, borderDash: x.tracejado ? [5, 4] : [], pointRadius: 0, spanGaps: true, tension: .15
+  }));
+  // pontos reais registrados (só faz sentido no total)
+  const reais = Object.entries(HIST).filter(([k]) => k >= E.dias[0]).sort();
+  if (EVO.real && EVO.agr === 'total' && reais.length) ds.push({ label: 'Registrado', type: 'scatter', data: reais.map(([k, v]) => ({ x: new Date(k + 'T12:00').getTime(), y: pctM ? (v.total / base0 - 1) * 100 : v.total })), backgroundColor: css('--up'), borderColor: css('--panel'), pointRadius: 5, pointHoverRadius: 7 });
+  const tot = E.r.total, ini = tot.find(v => v > 0), fim = tot.at(-1), varPer = fim / ini - 1, cdiPer = E.cdiIdx.at(-1) / E.cdiIdx[0] - 1;
+  const per = { 21: '1 mês', 63: '3 meses', 126: '6 meses', 252: '12 meses', 504: '2 anos' }[EVO.per];
+  $('#evoSub').innerHTML = `Em ${per}: ${brl(ini)} → <b>${brl(fim)}</b> (<b class="${cls(varPer)}">${sgnPct(varPer)}</b>) contra <b>${sgnPct(cdiPer)}</b> do CDI${EVO.prov ? ', com proventos' : ', sem proventos'}.`;
+  chart('chEvo', { type: 'line', data: { datasets: ds }, options: { ...base(),
+    plugins: { legend: { display: false }, tooltip: { callbacks: { title: i => new Date(i[0].parsed.x).toLocaleDateString('pt-BR'), label: c => ` ${c.dataset.label}: ${fmt(c.parsed.y)}` } } },
+    scales: { x: { ...tScale(), min: E.eixo[0], max: E.eixo.at(-1) }, y: { ...axis(), ticks: { ...axis().ticks, callback: v => pctM ? v + '%' : (Math.abs(v) >= 1000 ? 'R$ ' + (v / 1000).toFixed(0) + ' mil' : brl(v)) } } } } });
+}
+const salvarEvo = () => { const { offInit, ...e } = EVO; store.set('af2.evo', e); };
+
 /* patrimônio total, por classe, por tipo e por instituição */
 function patrimonioAtual() {
   const val = HOLD.map(valorDe).filter(v => v > 0);
@@ -321,13 +440,16 @@ function renderRenda(d) {
   const mes = {}; Object.values(EXTRATOS).forEach(e => Object.entries(e.rendaPorMes || {}).forEach(([k, v]) => mes[k] = (mes[k] || 0) + v));
   const ks = Object.keys(mes).sort();
   const est = d.itens.reduce((s, x) => s + (x.a && x.v > 0 ? x.v * x.a.dy : 0), 0);
-  const ext = Object.values(EXTRATOS), taxas = ext.reduce((s, e) => s + e.taxas, 0), meses = ext.reduce((s, e) => s + mesesPeriodo(e), 0) || 1;
+  const ext = Object.values(EXTRATOS).filter(e => e.tipo !== 'informe'), infs = Object.values(EXTRATOS).filter(e => e.tipo === 'informe');
+  const taxas = ext.reduce((s, e) => s + (e.taxas || 0), 0), meses = ext.reduce((s, e) => s + mesesPeriodo(e), 0) || 1;
   const rec = ks.length ? Object.values(mes).reduce((a, b) => a + b, 0) / Math.max(1, ks.length) : 0;
   $('#eRendaKv').innerHTML = [
     ks.length ? ['Recebido por mês (extratos)', `<b class="up">${brl(rec)}</b> <span class="sub">média de ${ks.length} meses</span>`] : null,
     ['Renda estimada pelos proventos de 12 meses', `<b>${brl(est / 12)}/mês</b> <span class="sub">${brl(est)}/ano · ${pct(est / (d.total || 1), 1)} da carteira</span>`],
     taxas ? ['Taxas cobradas na conta', `<b class="down">${brl(taxas / meses)}/mês</b> <span class="sub">${ext.flatMap(e => e.taxasNome).join(', ')}</span>`] : null,
-    ext.some(e => e.irRetido) ? ['IR retido no período', brl(ext.reduce((s, e) => s + e.irRetido, 0))] : null,
+    ext.some(e => e.irRetido) ? ['IR retido no período', brl(ext.reduce((s, e) => s + (e.irRetido || 0), 0))] : null,
+    ...infs.map(e => [`Rendimentos em ${e.ano} (informe)`, `<b class="up">${brl(e.rendIsentos + e.rendTributados)}</b> <span class="sub">${brl(e.rendIsentos)} isentos + ${brl(e.rendTributados)} líquidos tributados · posição em 31/12: ${brl(e.posicaoFim)} (a custo, sem ações/FIIs)</span>`]),
+    ...infs.filter(e => e.vencidos?.length).map(e => [`Venceram/resgatados em ${e.ano}`, `<span class="sub">${e.vencidos.map(esc).join('; ')}</span>`]),
     ext.some(e => e.resgates?.length) ? ['Resgatados no período', `<span class="sub">${ext.flatMap(e => e.resgates).map(esc).join('; ')}</span>`] : null
   ].filter(Boolean).map(([k, v]) => `<span>${k}</span><span class="num">${v}</span>`).join('');
   chart('chRenda', { type: 'bar', data: { labels: ks.map(k => k.split('-').reverse().join('/')), datasets: [{ label: 'Proventos e cupons', data: ks.map(k => Math.round(mes[k] * 100) / 100), backgroundColor: css('--up'), borderRadius: 3 }] },
@@ -456,12 +578,16 @@ const drop = $('#eDrop');
 ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
 drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) importar([...e.dataTransfer.files]); });
 $('#eAdd').onclick = () => { HOLD.unshift({ tipo: 'CDB', ativo: '', inst: '', idx: 'CDI', taxa: '', venc: '', qtd: '', valor: '' }); salvarHold(); renderExist(); };
-$('#eClear').onclick = () => { if (confirm('Apagar todos os investimentos da sua carteira neste navegador?')) { HOLD = []; EXTRATOS = {}; SNAP = null; store.set('af2.snap', null); salvarHold(); renderExist(); } };
+$('#eClear').onclick = () => { if (confirm('Apagar todos os investimentos da sua carteira neste navegador?')) { HOLD = []; EXTRATOS = {}; SNAP = null; HIST = {}; store.set('af2.snap', null); store.set('af2.hist', HIST); salvarHold(); renderExist(); } };
 $('#eSave').onclick = () => exportarJSON(HOLD);
 $('#eOpen').onchange = async e => { const f = e.target.files[0]; if (f) { try { abrirJSON(JSON.parse(await f.text())); $('#eImpMsg').innerHTML = `<b class="up">${esc(f.name)}</b>: carteira salva aberta — veja "Desde que você salvou".`; } catch (er) { $('#eImpMsg').innerHTML = `<b class="down">${esc(f.name)}</b>: ${esc(er.message)}`; } } e.target.value = ''; };
 $('#cSaveJson').onclick = () => { renderCarteira(); exportarJSON(planoComoHoldings(), { origem: 'montar do zero' }); };
 $('#cToExist').onclick = () => { renderCarteira(); HOLD = planoComoHoldings(); EXTRATOS = {}; salvarHold(); modo('exist'); };
 $('#aiRun').onclick = analisarIA;
+document.querySelectorAll('#evoPer button').forEach(b => b.onclick = () => { EVO.per = +b.dataset.v; salvarEvo(); renderEvolucao(EXIST); });
+document.querySelectorAll('#evoModo button').forEach(b => b.onclick = () => { EVO.modo = b.dataset.v; salvarEvo(); renderEvolucao(EXIST); });
+$('#evoAgr').onchange = e => { EVO.agr = e.target.value; EVO.off = []; EVO.offInit = false; salvarEvo(); renderEvolucao(EXIST); };
+[['#evoCdi', 'cdi'], ['#evoIbov', 'ibov'], ['#evoProv', 'prov'], ['#evoReal', 'real']].forEach(([id, k]) => $(id).onchange = e => { EVO[k] = e.target.checked; salvarEvo(); renderEvolucao(EXIST); });
 (() => {
   const e = store.get('af2.exist', null);
   if (e) { $('#ePerfil').value = e.perfil; $('#ePrazo').value = e.prazo; $('#eAporte').value = e.aporte; $('#eRes').value = Math.round(e.res * 100); $('#eCap').value = Math.round(e.cap * 100); if (e.obj) $('#eObj').value = e.obj; }

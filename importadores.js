@@ -164,7 +164,7 @@ function carteiraDoExtratoXP(ex, src = '', universo = []) {
   ex.rf.filter(r => !resgatado(r.nome)).forEach(r => out.push({ tipo: r.tipo, ativo: r.nome, inst: 'XP', idx: idxPorTexto(r.nome), taxa: '', venc: r.venc, qtd: '', valor: r.valor, imp: true, src,
     nota: 'valor aplicado em ' + r.data.split('-').reverse().join('/') + '; atualize com o valor de hoje e informe a taxa' }));
   const coes = {}; ex.coes.forEach(c => { (coes[c.codigo] = coes[c.codigo] || { ...c, cupons: 0 }).cupons += c.cupom; });
-  Object.values(coes).forEach(c => out.push({ tipo: 'COE', ativo: `COE ${c.codigo} (${c.emissor})`, inst: 'XP', idx: '', taxa: '', venc: c.venc, qtd: '', valor: '', imp: true, src,
+  Object.values(coes).forEach(c => out.push({ tipo: 'COE', ativo: `COE ${c.codigo} (${c.emissor})`, codigo: c.codigo, inst: 'XP', idx: '', taxa: '', venc: c.venc, qtd: '', valor: '', imp: true, src,
     renda: Math.round(c.cupons * 100) / 100, nota: 'o extrato mostra só os cupons; informe o valor atual' }));
   const fundos = {}; ex.fundos.forEach(f => fundos[f.nome] = (fundos[f.nome] || 0) + f.valor);
   Object.entries(fundos).filter(([n]) => !resgatado(n)).forEach(([n, v]) => out.push({ tipo: tipoPorTexto(n, 'FUNDO') || 'Fundo DI/renda fixa', ativo: n, inst: 'XP', idx: '', taxa: '', venc: '', qtd: '', valor: Math.round(v * 100) / 100, imp: true, src,
@@ -179,4 +179,70 @@ function resumoExtratoXP(ex) {
     irRetido: ex.irRetido, resgates: ex.resgates.map(r => `${r.nome} (${r.valor.toFixed(2)})`), lancamentos: ex.lancamentos };
 }
 
-if (typeof module !== 'undefined') module.exports = { numBR, tipoPorTexto, idxPorTexto, venc, lerTabela, lerTextoPDF, ehExtratoXP, lerExtratoXP, carteiraDoExtratoXP, resumoExtratoXP };
+/* ---------- informe de rendimentos da XP (posição em 31/12, a custo, e rendimentos do ano) ---------- */
+const ehInformeXP = texto => /INFORME DE RENDIMENTOS FINANCEIROS/i.test(texto) && /XP INVESTIMENTOS/i.test(texto);
+// rótulos da coluna lateral do informe, que o pdf.js intercala com o texto dos ativos
+const RUIDO_INFORME = /^(Declara[çc][ãa]o|IRPF|Ficha |Grupo \d|C[óo]d\.|\(Valores|P[áa]gina \d|XP INVESTIMENTOS CCTVM S\/A$|CNPJ:|Especifica|Total:)|^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$|C[óo]d\. ao lado/i;
+function lerInformeXP(texto) {
+  const L = String(texto).split(/\r?\n/).map(normLinhaPDF).filter(Boolean);
+  const anoM = L.join(' ').match(/ANO CALEND[ÁA]RIO DE (\d{4})/i);
+  const out = { ano: anoM ? +anoM[1] : null, ativos: [], saldoConta: 0 };
+  const ini = L.findIndex(l => /DETALHAMENTO DOS ATIVOS/i.test(l));
+  let isento = false, fundo = false, atual = null;
+  const fechar = () => {
+    if (!atual) return;
+    const t = atual.partes.join(' ').replace(/\s+/g, ' ').trim(), T = t.toUpperCase();
+    const vencs = t.match(/\d{2}\/\d{2}\/\d{4}/g);
+    const a = { nome: t.replace(/\s*\d{2}\/\d{2}\/\d{4}\s*/g, ' ').trim(), saldoAnt: atual.s24, saldo: atual.s25, rend: atual.rend, isento: atual.isento, fundo: atual.fundo, venc: vencs ? venc(vencs.at(-1)) : '' };
+    if (!a.fundo) {
+      const m = T.match(/\b(CDB|LCA|LCI|CRA|CRI|COE|LF|LC|DEB[ÊE]NTURE|NTN-?B|LTN|LFT)\b/);
+      if (m) {
+        a.tipo = tipoPorTexto(m[1]) || m[1];
+        a.emissor = t.slice(0, m.index).trim();
+        const cod = t.slice(m.index).split(' ').filter(w => /^[A-Z0-9]{8,}$/.test(w) && /\d/.test(w));
+        a.codigo = cod.at(-1) || '';
+        a.idx = /\bPR[ÉE]\b/.test(T) ? 'Pré' : /IPCA/.test(T) ? 'IPCA' : /\b(FLU|P[ÓO]S|DI|CDI)\b/.test(T) ? 'CDI' : '';
+      }
+    }
+    out.ativos.push(a); atual = null;
+  };
+  for (const l of L.slice(ini < 0 ? 0 : ini)) {
+    if (/RENDIMENTOS ISENTOS/i.test(l)) isento = true;
+    if (/SUJEITOS [ÀA]|TRIBUTA[ÇC][ÃA]O EXCLUSIVA/i.test(l)) isento = false;
+    if (/Fundos de Investimento\s+Saldos/i.test(l)) fundo = true;
+    if (/Renda Fixa\s+Saldos/i.test(l)) fundo = false;
+    const sc = l.match(/^Saldo em conta - .*? ([\d.]+,\d{2}) ([\d.]+,\d{2})$/i);
+    if (sc) { fechar(); out.saldoConta += numBR(sc[2]); continue; }
+    if (/^SALDO EM CONTA$/i.test(l)) { fechar(); continue; }
+    const m = l.match(/^(.*?)\s*(-?[\d.]+,\d{2}) (-?[\d.]+,\d{2}) (-?[\d.]+,\d{2})$/);
+    if (m && !/^Total:/i.test(m[1]) && m[1] && !/Saldos em/i.test(l)) {
+      fechar();
+      atual = { partes: [m[1].replace(/\s*(Declara[çc][ãa]o|IRPF).*$/i, '')], s24: numBR(m[2]), s25: numBR(m[3]), rend: numBR(m[4]), isento, fundo };
+      continue;
+    }
+    if (/^Total:/i.test(l)) { fechar(); continue; }
+    if (atual && !RUIDO_INFORME.test(l) && !/RENDIMENTOS|TRIBUTA[ÇC][ÃA]O|Saldos em/i.test(l)) atual.partes.push(l.replace(/\s*(Declara[çc][ãa]o|IRPF|Ficha Bens e Direitos)\b.*$/i, ''));
+  }
+  fechar();
+  return out;
+}
+function carteiraDoInformeXP(inf, src = '') {
+  const data = inf.ano ? `31/12/${inf.ano}` : 'fim do ano';
+  const out = inf.ativos.filter(a => a.saldo > 0).map(a => a.fundo
+    ? { tipo: (tipoPorTexto(a.nome, 'FUNDO') || '').startsWith('Fundo') ? tipoPorTexto(a.nome, 'FUNDO') : 'Fundo DI/renda fixa', ativo: a.nome.slice(0, 60), inst: 'XP', idx: '', taxa: '', venc: '', qtd: '', valor: a.saldo,
+      imp: true, src, renda: a.rend || '', nota: `saldo em ${data} (informe de rendimentos)${a.isento ? ', isento de IR' : ''}; atualize com o valor de hoje` }
+    : { tipo: a.tipo || 'Outro', ativo: `${a.tipo || ''} ${a.emissor || ''} ${a.codigo || ''}`.replace(/\s+/g, ' ').trim(), codigo: a.codigo, inst: a.emissor || '', idx: a.idx || '', taxa: '', venc: a.venc,
+      qtd: '', valor: a.saldo, imp: true, src, renda: a.rend || '', nota: `valor de custo em ${data} (informe de rendimentos); informe a taxa e atualize o valor` });
+  if (inf.saldoConta > 0) out.push({ tipo: 'Conta corrente', ativo: `Saldo em conta (${data})`, inst: 'XP', idx: '', taxa: '', venc: '', qtd: '', valor: Math.round(inf.saldoConta * 100) / 100, imp: true, src });
+  return out;
+}
+function resumoInformeXP(inf) {
+  const soma = f => Math.round(inf.ativos.filter(f).reduce((s, a) => s + a.rend, 0) * 100) / 100;
+  return { ano: inf.ano, rendIsentos: soma(a => a.isento), rendTributados: soma(a => !a.isento),
+    posicaoFim: Math.round((inf.ativos.reduce((s, a) => s + a.saldo, 0) + inf.saldoConta) * 100) / 100,
+    posicaoAnt: Math.round(inf.ativos.reduce((s, a) => s + a.saldoAnt, 0) * 100) / 100,
+    vencidos: inf.ativos.filter(a => a.saldoAnt > 0 && !(a.saldo > 0)).map(a => `${a.tipo || ''} ${a.emissor || a.nome}`.trim()) };
+}
+
+if (typeof module !== 'undefined') module.exports = { numBR, tipoPorTexto, idxPorTexto, venc, lerTabela, lerTextoPDF, ehExtratoXP, lerExtratoXP, carteiraDoExtratoXP, resumoExtratoXP,
+  ehInformeXP, lerInformeXP, carteiraDoInformeXP, resumoInformeXP };

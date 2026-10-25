@@ -37,7 +37,7 @@ const M = {  // fallback = valores de 25/10/2026; substituídos pelo BCB ao carr
   focusSelic: { 2026: .1325, 2027: .12, 2028: .105, 2029: .10, 2030: .10 },
   focusIpca: { 2026: .0522, 2027: .0432, 2028: .0375, 2029: .035, 2030: .035 },
   focusUsd: { 2026: 5.13, 2027: 5.22, 2028: 5.29 },
-  selicHist: [], ipcaHist: [], usdHist: [], ok: false
+  selicHist: [], ipcaHist: [], usdHist: [], cdiDia: {}, ok: false
 };
 let D = window.DADOS || null;
 let NEWS = [], SETOR_DE = {}, U = {}, SETORES = [], IB = null;
@@ -50,12 +50,14 @@ async function loadMacro() {
   const hoje = new Date(), fim = hoje.toLocaleDateString('pt-BR');
   const ini = d => new Date(Date.now() - d * 864e5).toLocaleDateString('pt-BR');
   const focus = ind => getJSON(`https://olinda.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata/ExpectativasMercadoAnuais?$top=12&$filter=Indicador%20eq%20'${ind}'%20and%20baseCalculo%20eq%200&$orderby=Data%20desc&$format=json&$select=Data,DataReferencia,Mediana`);
-  const [selic, cdi, ipca, tr, usd, fs, fi, fu] = await Promise.allSettled([
+  const [selic, cdi, ipca, tr, usd, fs, fi, fu, cdid] = await Promise.allSettled([
     getJSON(sgs(432, `?dataInicial=${ini(800)}&dataFinal=${fim}`)), getJSON(sgs(4389, '/ultimos/5')),
     getJSON(sgs(13522, `?dataInicial=${ini(800)}&dataFinal=${fim}`)), getJSON(sgs(226, '/ultimos/1')),
     getJSON(sgs(1, `?dataInicial=${ini(400)}&dataFinal=${fim}`)),
-    focus('Selic'), focus('IPCA'), focus('C%C3%A2mbio')
+    focus('Selic'), focus('IPCA'), focus('C%C3%A2mbio'),
+    getJSON(sgs(12, `?dataInicial=${ini(760)}&dataFinal=${fim}`))  // CDI diário, para a evolução da renda fixa
   ]);
+  if (cdid.status === 'fulfilled') M.cdiDia = Object.fromEntries(cdid.value.map(x => [x.data.split('/').reverse().join('-'), +x.valor / 100]));
   let ok = 0;
   const serie = r => r.value.map(x => ({ d: parseBr(x.data), v: +x.valor })).filter(x => x.d <= hoje);
   if (selic.status === 'fulfilled') { ok++; M.selicHist = serie(selic).map(x => ({ d: x.d, v: x.v / 100 })); M.selic = M.selicHist.at(-1).v; }

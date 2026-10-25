@@ -95,6 +95,36 @@ describe('extrato da XP como o pdf.js entrega (espaços entre os caracteres, des
   });
 });
 
+describe('informe de rendimentos da XP', () => {
+  const texto = fs.readFileSync(path.join(__dirname, 'fixtures', 'xp_informe_pdfjs_ficticio.txt'), 'utf8');
+  const inf = imp.lerInformeXP(texto);
+  test('é reconhecido e lê o ano-calendário', () => {
+    expect(imp.ehInformeXP(texto)).toBe(true);
+    expect(imp.ehExtratoXP(texto)).toBe(false);
+    expect(inf.ano).toBe(2025);
+  });
+  test('lê cada ativo do detalhamento, com tipo, código, emissor, indexador, vencimento e se é isento', () => {
+    const cdb = inf.ativos.find(a => a.codigo === 'CDB000AAAA1');
+    expect(cdb).toMatchObject({ tipo: 'CDB', emissor: 'BANCO EXEMPLO DE INVESTIMENTO S.A', idx: 'CDI', venc: '2030-01-21', saldoAnt: 4000, saldo: 4000, isento: false });
+    expect(inf.ativos.find(a => a.codigo === 'CDB000BBBB2')).toMatchObject({ idx: 'Pré', venc: '2027-02-17', saldo: 2500, rend: 120 });
+    expect(inf.ativos.find(a => a.codigo === 'XP0000AAAA1')).toMatchObject({ tipo: 'COE', emissor: 'BANCO XP S.A.', saldo: 1000 });
+    expect(inf.ativos.find(a => a.codigo === '00A00000001')).toMatchObject({ tipo: 'LCA', isento: true, saldo: 0, rend: 500 });
+    expect(inf.ativos.find(a => a.fundo)).toMatchObject({ nome: 'Fundo Debentures Exemplo Incentivado C', saldo: 2000, isento: true });
+    expect(inf.saldoConta).toBeCloseTo(75.5);
+  });
+  test('vira carteira só com o que tinha saldo no fim do ano', () => {
+    const linhas = imp.carteiraDoInformeXP(inf, 'informe.pdf');
+    expect(linhas.map(l => l.codigo).filter(Boolean).sort()).toEqual(['CDB000AAAA1', 'CDB000BBBB2', 'XP0000AAAA1']);
+    expect(linhas.find(l => l.codigo === 'CDB000BBBB2')).toMatchObject({ tipo: 'CDB', inst: 'BANCO EXEMPLO B', idx: 'Pré', valor: 2500, src: 'informe.pdf' });
+    expect(linhas.find(l => l.tipo === 'Fundo DI/renda fixa')).toMatchObject({ valor: 2000 });
+    expect(linhas.find(l => l.tipo === 'Conta corrente')).toMatchObject({ valor: 75.5 });
+  });
+  test('resume os rendimentos do ano', () => {
+    const r = imp.resumoInformeXP(inf);
+    expect(r).toMatchObject({ ano: 2025, rendIsentos: 500, rendTributados: 175, posicaoFim: 9575.5 });
+  });
+});
+
 describe('planilhas (layout do extrato de posição da B3)', () => {
   const linhas = imp.lerTabela([
     ['Produto', 'Instituição', 'Código de Negociação', 'Quantidade', 'Preço de Fechamento', 'Valor Atualizado'],

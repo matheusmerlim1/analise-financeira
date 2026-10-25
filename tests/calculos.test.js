@@ -1,4 +1,53 @@
-const { aliquotaIR, dimensionar, distribuirAporte } = require('../calculos');
+const { aliquotaIR, dimensionar, distribuirAporte, evolucaoCarteira, indiceAcumulado, rentabilidade } = require('../calculos');
+
+describe('instituições em liquidação', () => {
+  const { instituicaoLiquidada } = require('../calculos');
+  test('reconhece CDB do conglomerado Master pelo emissor', () => {
+    expect(instituicaoLiquidada({ tipo: 'CDB', inst: 'BANCO MASTER S/A', ativo: 'CDB BANCO MASTER S/A CDB000' })).toMatchObject({ nome: 'conglomerado do Banco Master' });
+    expect(instituicaoLiquidada({ tipo: 'CDB', inst: 'MASTER - JUROS MENSAL', ativo: 'CDB' })).not.toBeNull();
+    expect(instituicaoLiquidada({ tipo: 'LCA', inst: 'BANCO MASTER DE INVESTIMENTO S.A', ativo: '' })).not.toBeNull();
+  });
+  test('não confunde com outros bancos nem com ações e COEs', () => {
+    expect(instituicaoLiquidada({ tipo: 'CDB', inst: 'BANCO ARBI S/A', ativo: 'CDB' })).toBeNull();
+    expect(instituicaoLiquidada({ tipo: 'COE', inst: 'BANCO XP S.A.', ativo: 'COE' })).toBeNull();
+    expect(instituicaoLiquidada({ tipo: 'Ação', inst: 'XP', ativo: 'MASTERCARD' })).toBeNull();
+  });
+});
+
+describe('evolução do patrimônio', () => {
+  const eixo = [1, 2, 3];
+  test('ação: quantidade de hoje × preço de cada dia; termina no valor atual', () => {
+    const r = evolucaoCarteira(eixo, [{ chave: 'AAA3', grupo: 'acoes', v: 200, precos: [8, 9, 10] }]);
+    expect(r.ativos.AAA3).toEqual([160, 180, 200]);
+    expect(r.total).toEqual([160, 180, 200]);
+  });
+  test('renda fixa: valor de hoje descontado para trás pelo índice', () => {
+    const r = evolucaoCarteira(eixo, [{ chave: 'CDB', grupo: 'pos', v: 121, cresc: [1, 1.1, 1.21] }]);
+    expect(r.ativos.CDB.map(x => Math.round(x))).toEqual([100, 110, 121]);
+  });
+  test('soma por grupo e ignora itens sem valor', () => {
+    const r = evolucaoCarteira(eixo, [
+      { chave: 'A', grupo: 'acoes', v: 100, precos: [10, 10, 10] }, { chave: 'B', grupo: 'acoes', v: 50, precos: [5, 5, 5] },
+      { chave: 'C', grupo: 'pos', v: 0, cresc: [1, 1, 1] }]);
+    expect(r.grupos.acoes).toEqual([150, 150, 150]);
+    expect(r.ativos.C).toBeUndefined();
+  });
+  test('com proventos, o passado fica menor (o DY recebido entra como ganho) e o fim continua igual ao valor de hoje', () => {
+    const sem = evolucaoCarteira(eixo, [{ chave: 'F', grupo: 'fii', v: 100, precos: [10, 10, 10], dy: .252 }]).total;
+    const com = evolucaoCarteira(eixo, [{ chave: 'F', grupo: 'fii', v: 100, precos: [10, 10, 10], dy: .252 }], { proventos: true }).total;
+    expect(com[2]).toBeCloseTo(100);
+    expect(com[0]).toBeLessThan(sem[0]);
+  });
+  test('preço faltando no começo usa o primeiro preço conhecido na soma', () => {
+    const r = evolucaoCarteira(eixo, [{ chave: 'N', grupo: 'acoes', v: 30, precos: [null, 10, 10] }]);
+    expect(r.ativos.N).toEqual([null, 30, 30]);
+    expect(r.total).toEqual([30, 30, 30]);
+  });
+  test('índice acumulado e rentabilidade em %', () => {
+    expect(indiceAcumulado(eixo, () => .1)).toEqual([1.1, 1.2100000000000002, 1.3310000000000004]);
+    expect(rentabilidade([100, 110, 99]).map(x => Math.round(x))).toEqual([0, 10, -1]);
+  });
+});
 
 describe('IR regressivo', () => {
   test.each([[1, .225], [180, .225], [181, .20], [360, .20], [361, .175], [720, .175], [721, .15]])('%i dias → %f', (d, a) => {
