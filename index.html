@@ -123,6 +123,9 @@ footer{margin-top:20px;color:var(--ink-3);font-size:11px}
 .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .ai{font-size:13px;line-height:1.55;color:var(--ink)}.ai h3{font-size:13.5px;margin:12px 0 4px}.ai ul{margin:4px 0;padding-left:18px}.ai p{margin:6px 0}
 tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
+@keyframes flash{0%,60%{box-shadow:0 0 0 2px var(--warn);background:var(--warn-soft)}100%{box-shadow:none}}
+.flash,.flash td{animation:flash 2.4s ease-out}
 </style>
 </head>
 <body>
@@ -186,6 +189,7 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
   <section class="tab" id="tab-carteira">
     <div class="seg" id="modoSeg"><button data-modo="zero">Montar do zero</button><button data-modo="exist">Analisar minha carteira</button></div>
     <div id="modoExist" hidden>
+      <div class="note" id="eAlerta" hidden style="margin-bottom:10px;border:1px solid var(--down);background:var(--down-soft)"></div>
       <div class="card" id="patCard" style="margin-bottom:10px">
         <div class="grid g3" style="align-items:center">
           <div>
@@ -197,6 +201,15 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
           <div class="chart sm"><canvas id="chPat"></canvas></div>
           <div class="scroll short"><table id="patInst"></table></div>
         </div>
+      </div>
+      <div class="card" id="linhaCard" style="margin-bottom:10px" hidden>
+        <h2>Linha do tempo do patrimônio — todos os documentos</h2>
+        <p class="sub">Cruza as declarações do IRPF, os informes de rendimentos, os registros diários e a carteira de hoje. Importe as declarações de outros anos para completar.</p>
+        <div class="grid g21 mt">
+          <div class="chart" style="height:260px"><canvas id="chLinha"></canvas></div>
+          <div><h2 style="font-size:12.5px">O que o cruzamento mostra</h2><ul class="why" id="cruzList"></ul></div>
+        </div>
+        <div class="scroll short mt"><table id="linhaTbl"></table></div>
       </div>
       <div class="card" id="evoCard" style="margin-bottom:10px">
         <div class="row sp">

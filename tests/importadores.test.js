@@ -125,6 +125,39 @@ describe('informe de rendimentos da XP', () => {
   });
 });
 
+describe('declaração do IRPF (imagem da declaração)', () => {
+  const texto = fs.readFileSync(path.join(__dirname, 'fixtures', 'irpf_pdfjs_ficticio.txt'), 'utf8');
+  const ir = imp.lerIRPF(texto);
+  test('é reconhecida e não se confunde com os documentos da XP', () => {
+    expect(imp.ehIRPF(texto)).toBe(true);
+    expect(imp.ehInformeXP(texto)).toBe(false);
+    expect(imp.ehExtratoXP(texto)).toBe(false);
+    expect(ir).toMatchObject({ exercicio: 2026, ano: 2025 });
+  });
+  test('lê cada bem com grupo, código, discriminação e os dois saldos', () => {
+    expect(ir.bens).toHaveLength(6);
+    expect(ir.bens.find(b => b.grupo === '04' && b.codigo === '02')).toMatchObject({ ant: 10000, atual: 10000 });
+    expect(ir.bens.find(b => b.grupo === '04' && b.codigo === '02').discr).toMatch(/BANCO MASTER/);
+    expect(ir.bens.find(b => b.grupo === '07')).toMatchObject({ ant: 0, atual: 7000 });
+  });
+  test('não guarda dados sensíveis na discriminação (placa, chassi, renavam, conta)', () => {
+    const txt = ir.bens.map(b => b.discr).join(' ');
+    expect(txt).not.toMatch(/RENAVAM|CHASSI|PLACA|Conta:|Agência/i);
+  });
+  test('lê dívidas, rendimentos, imposto e evolução patrimonial', () => {
+    expect(ir.dividas).toEqual([expect.objectContaining({ ant: 0, atual: 3000, pago: 100 })]);
+    expect(ir).toMatchObject({ dividendos: 1500, rendAplicacoes: 800, rendIsentos: 2000, rendExclusivos: 4800, restituir: 350, pagar: 0,
+      bensAnt: 37300, bensAtual: 39650, dividasAnt: 0, dividasAtual: 3000 });
+  });
+  test('resume investimentos x outros bens e monta a carteira só com investimentos com saldo', () => {
+    const r = imp.resumoIRPF(ir);
+    expect(r).toMatchObject({ tipo: 'irpf', ano: 2025, invest: 19650, investAnt: 17300, outrosBens: 20000, liquido: 36650 });
+    const linhas = imp.carteiraDoIRPF(ir, 'irpf.pdf');
+    expect(linhas.map(l => l.tipo).sort()).toEqual(['Ação', 'CDB', 'Conta corrente', 'FII']);
+    expect(linhas.find(l => l.tipo === 'Ação')).toMatchObject({ ativo: 'BBAS3', valor: 2500, src: 'irpf.pdf' });
+  });
+});
+
 describe('planilhas (layout do extrato de posição da B3)', () => {
   const linhas = imp.lerTabela([
     ['Produto', 'Instituição', 'Código de Negociação', 'Quantidade', 'Preço de Fechamento', 'Valor Atualizado'],

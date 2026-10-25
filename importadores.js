@@ -244,5 +244,69 @@ function resumoInformeXP(inf) {
     vencidos: inf.ativos.filter(a => a.saldoAnt > 0 && !(a.saldo > 0)).map(a => `${a.tipo || ''} ${a.emissor || a.nome}`.trim()) };
 }
 
+/* ---------- declaração do IRPF ("imagem da declaração" em PDF) ---------- */
+const ehIRPF = texto => /DECLARA[ÇC][ÃA]O DE AJUSTE ANUAL/i.test(texto) && /BENS E DIREITOS/i.test(texto) && !ehInformeXP(texto);
+// grupos da ficha Bens e Direitos que são investimentos ou dinheiro (os demais: imóveis, veículos, outros bens)
+const GRUPOS_INVEST = new Set(['03', '04', '06', '07', '08']);
+const RUIDO_IRPF = /^(105 - BRASIL|Bem ou direito pertencente|CNPJ|Banco: \d|RENAVAM|GRUPO|SITUA[ÇC][ÃA]O|31\/12\/\d{4}|DECLARA[ÇC][ÃA]O|P[áa]gina \d|NOME:|CPF:|Inscri[çc][ãa]o|Matr[íi]cula|Data de aquisi)/i;
+// a discriminação é texto livre: tira o que identifica a pessoa ou o bem (placa, chassi, renavam, conta)
+const limparDiscr = s => String(s).replace(/\b(PLACA|CHASSI|RENAVAM)\b[-:\s]*[A-Z0-9-]+/gi, '').replace(/\b(AG[ÊE]NCIA|CONTA|C\/C|C\/)\s*[:\-]?\s*[\d./-]+/gi, '').replace(/\s+/g, ' ').trim();
+function lerIRPF(texto) {
+  const L = String(texto).split(/\r?\n/).map(normLinhaPDF).filter(Boolean), T = L.join('\n');
+  const ex = T.match(/EXERC[ÍI]CIO (\d{4}) ANO-CALEND[ÁA]RIO (\d{4})/i);
+  const val = re => { const m = T.match(re); return m ? numBR(m[1]) : 0; };
+  const ir = { exercicio: ex ? +ex[1] : null, ano: ex ? +ex[2] : null, bens: [], dividas: [],
+    dividendos: val(/Lucros e dividendos recebidos ([\d.]+,\d{2})/i), rendAplicacoes: val(/Rendimentos de aplica[çc][õo]es financeiras ([\d.]+,\d{2})/i),
+    rendIsentos: val(/Rendimentos isentos e n[ãa]o tribut[áa]veis ([\d.]+,\d{2})/i), rendExclusivos: val(/Rendimentos sujeitos [àa] tributa[çc][ãa]o exclusiva\/definitiva ([\d.]+,\d{2})/i),
+    rendTributaveis: val(/Recebidos de Pessoa Jur[íi]dica pelo titular ([\d.]+,\d{2})/i), restituir: val(/IMPOSTO A RESTITUIR ([\d.]+,\d{2})/i), pagar: val(/SALDO DE IMPOSTO A PAGAR ([\d.]+,\d{2})/i),
+    bensAnt: val(/Bens e direitos em 31\/12\/\d{4} ([\d.]+,\d{2})/i), bensAtual: 0, dividasAnt: val(/D[íi]vidas e [ôo]nus reais em 31\/12\/\d{4} ([\d.]+,\d{2})/i), dividasAtual: 0 };
+  const bens = [...T.matchAll(/Bens e direitos em 31\/12\/\d{4} ([\d.]+,\d{2})/gi)], divs = [...T.matchAll(/D[íi]vidas e [ôo]nus reais em 31\/12\/\d{4} ([\d.]+,\d{2})/gi)];
+  if (bens[1]) ir.bensAtual = numBR(bens[1][1]); if (divs[1]) ir.dividasAtual = numBR(divs[1][1]);
+  let secao = null, atual = null;
+  const fechar = () => { if (atual) { atual.discr = limparDiscr(atual.partes.join(' ')); delete atual.partes; (secao === 'bens' ? ir.bens : ir.dividas).push(atual); } atual = null; };
+  for (const l of L) {
+    if (/^DECLARA[ÇC][ÃA]O DE BENS E DIREITOS/i.test(l)) { if (secao !== 'bens') { fechar(); secao = 'bens'; } continue; }
+    if (/^D[ÍI]VIDAS E [ÔO]NUS REAIS/i.test(l)) { fechar(); secao = 'dividas'; continue; }
+    if (secao && /^(DOA[ÇC][ÕO]ES|DEMONSTRATIVO|RESUMO|EVOLU[ÇC][ÃA]O)/i.test(l)) { fechar(); secao = null; continue; }
+    if (!secao) continue;
+    if (/^TOTAL\b/i.test(l)) { fechar(); continue; }
+    let m;
+    if (secao === 'bens' && (m = l.match(/^(\d{2}) (\d{2}) (.*?) ?(-?[\d.]+,\d{2}) (-?[\d.]+,\d{2})$/))) {
+      fechar(); atual = { grupo: m[1], codigo: m[2], partes: [m[3]], ant: numBR(m[4]), atual: numBR(m[5]) }; continue;
+    }
+    if (secao === 'dividas' && (m = l.match(/^(\d{2}) (.*?) ?([\d.]+,\d{2}) ([\d.]+,\d{2}) ([\d.]+,\d{2})$/))) {
+      fechar(); atual = { codigo: m[1], partes: [m[2]], ant: numBR(m[3]), atual: numBR(m[4]), pago: numBR(m[5]) }; continue;
+    }
+    if (atual && !RUIDO_IRPF.test(l)) atual.partes.push(l);
+  }
+  fechar();
+  return ir;
+}
+function tipoDoBem(b) {
+  const g = b.grupo, c = b.codigo, t = b.discr;
+  if (g === '03') return tipoPorTexto(t) === 'FII' ? 'FII' : 'Ação';
+  if (g === '04') return c === '01' ? 'Poupança' : tipoPorTexto(t) || (c === '03' ? 'LCA' : c === '02' ? 'CDB' : 'Outro');
+  if (g === '06') return 'Conta corrente';
+  if (g === '07') return c === '03' || /\bFII\b/i.test(t) ? 'FII' : (tipoPorTexto(t, 'FUNDO') || 'Fundo DI/renda fixa');
+  if (g === '08') return 'Cripto';
+  return 'Bem';
+}
+function carteiraDoIRPF(ir, src = '') {
+  return ir.bens.filter(b => GRUPOS_INVEST.has(b.grupo) && b.atual > 0).map(b => {
+    const tipo = tipoDoBem(b), tk = (b.discr.toUpperCase().match(/\b[A-Z]{4}\d{1,2}\b/) || [])[0];
+    return { tipo, ativo: (['Ação', 'FII'].includes(tipo) && tk ? tk : b.discr).slice(0, 60), inst: '', idx: idxPorTexto(b.discr), taxa: '', venc: '', qtd: '', valor: b.atual,
+      imp: true, src, nota: `valor declarado no IRPF em 31/12/${ir.ano} (custo de aquisição); atualize com o valor de hoje` };
+  });
+}
+function resumoIRPF(ir) {
+  const soma = (f, k) => Math.round(ir.bens.filter(f).reduce((s, b) => s + b[k], 0) * 100) / 100, inv = b => GRUPOS_INVEST.has(b.grupo);
+  const bens = ir.bensAtual || soma(() => true, 'atual'), dividas = ir.dividasAtual || ir.dividas.reduce((s, d) => s + d.atual, 0);
+  return { tipo: 'irpf', exercicio: ir.exercicio, ano: ir.ano, bens, bensAnt: ir.bensAnt || soma(() => true, 'ant'), dividas, dividasAnt: ir.dividasAnt,
+    invest: soma(inv, 'atual'), investAnt: soma(inv, 'ant'), outrosBens: soma(b => !inv(b), 'atual'), liquido: Math.round((bens - dividas) * 100) / 100,
+    dividendos: ir.dividendos, rendAplicacoes: ir.rendAplicacoes, rendTributaveis: ir.rendTributaveis, restituir: ir.restituir, pagar: ir.pagar,
+    dividasDesc: ir.dividas.filter(d => d.atual > 0).map(d => `${d.discr} (${d.atual.toFixed(2)})`),
+    textoBens: ir.bens.map(b => b.discr).join(' | ') };
+}
+
 if (typeof module !== 'undefined') module.exports = { numBR, tipoPorTexto, idxPorTexto, venc, lerTabela, lerTextoPDF, ehExtratoXP, lerExtratoXP, carteiraDoExtratoXP, resumoExtratoXP,
-  ehInformeXP, lerInformeXP, carteiraDoInformeXP, resumoInformeXP };
+  ehInformeXP, lerInformeXP, carteiraDoInformeXP, resumoInformeXP, ehIRPF, lerIRPF, carteiraDoIRPF, resumoIRPF };
