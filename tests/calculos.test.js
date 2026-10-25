@@ -1,5 +1,13 @@
 const { aliquotaIR, dimensionar, distribuirAporte, evolucaoCarteira, indiceAcumulado, rentabilidade } = require('../calculos');
 
+describe('documentos importados', () => {
+  const { extratosMovimentacao } = require('../calculos');
+  test('taxas e proventos mensais só vêm de extratos de movimentação (não de informe nem de IRPF)', () => {
+    const docs = { 'a.pdf': { tipo: 'extrato', taxas: 100 }, 'b.pdf': { taxas: 50 }, 'inf.pdf': { tipo: 'informe' }, 'ir.pdf': { tipo: 'irpf' } };
+    expect(extratosMovimentacao(docs).map(e => e.taxas)).toEqual([100, 50]);
+  });
+});
+
 describe('instituições em liquidação', () => {
   const { instituicaoLiquidada } = require('../calculos');
   test('reconhece CDB do conglomerado Master pelo emissor', () => {

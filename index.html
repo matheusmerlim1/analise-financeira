@@ -123,6 +123,11 @@ footer{margin-top:20px;color:var(--ink-3);font-size:11px}
 .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .ai{font-size:13px;line-height:1.55;color:var(--ink)}.ai h3{font-size:13.5px;margin:12px 0 4px}.ai ul{margin:4px 0;padding-left:18px}.ai p{margin:6px 0}
 tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+.mini-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.mini{background:var(--panel-2);border-radius:8px;padding:8px 10px;min-width:0}
+.mini .l{font-size:10.5px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.mini .v{font-size:17px;font-weight:700;margin:2px 0}
+.mini .d{font-size:11.5px;color:var(--ink-2);line-height:1.45;overflow-wrap:anywhere}
 tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
 @keyframes flash{0%,60%{box-shadow:0 0 0 2px var(--warn);background:var(--warn-soft)}100%{box-shadow:none}}
 .flash,.flash td{animation:flash 2.4s ease-out}
@@ -270,9 +275,12 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
         <p class="sub" id="eAvSub"></p>
         <div class="scroll mt"><table id="eAv"></table></div>
       </div>
-      <div class="grid g12 mt">
-        <div class="card"><h2>Renda passiva e custos</h2><div class="kv mt" id="eRendaKv"></div></div>
-        <div class="card" id="chRendaBox"><h2>Proventos recebidos por mês</h2><p class="sub">Dos extratos importados.</p><div class="chart sm"><canvas id="chRenda"></canvas></div></div>
+      <div class="card mt">
+        <h2>Renda passiva e custos</h2>
+        <div class="grid g2 mt" style="align-items:start">
+          <div class="mini-grid" id="eRendaKv"></div>
+          <div id="chRendaBox"><p class="sub" style="margin-bottom:6px">Proventos e cupons recebidos por mês (extratos)</p><div class="chart" style="height:230px"><canvas id="chRenda"></canvas></div></div>
+        </div>
       </div>
       <div class="card mt">
         <div class="row sp"><h2>Seus ativos</h2><div class="row"><button class="btn" id="eAdd">+ Adicionar</button><button class="btn" id="eSave" title="Baixa a carteira e o retrato do mercado de hoje para reavaliar depois">Salvar carteira (JSON)</button><label class="btn" style="cursor:pointer">Abrir carteira salva<input type="file" id="eOpen" accept=".json" hidden></label><button class="btn ghost" id="eClear">Limpar tudo</button></div></div>

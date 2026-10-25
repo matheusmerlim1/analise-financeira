@@ -80,4 +80,7 @@ const LIQUIDADAS = [{ re: /\bMASTER\b|\bLETSBANK\b/i, nome: 'conglomerado do Ban
 const TIPOS_BANCARIOS = new Set(['CDB', 'LCI', 'LCA', 'LC', 'RDB']);
 const instituicaoLiquidada = h => TIPOS_BANCARIOS.has(h.tipo) ? LIQUIDADAS.find(l => l.re.test(`${h.inst || ''} ${h.ativo || ''}`)) || null : null;
 
-if (typeof module !== 'undefined') module.exports = { aliquotaIR, dimensionar, distribuirAporte, evolucaoCarteira, indiceAcumulado, rentabilidade, instituicaoLiquidada };
+/* documentos importados que são extratos de movimentação (os antigos não tinham "tipo") */
+const extratosMovimentacao = docs => Object.values(docs).filter(e => !e.tipo || e.tipo === 'extrato');
+
+if (typeof module !== 'undefined') module.exports = { aliquotaIR, dimensionar, distribuirAporte, evolucaoCarteira, indiceAcumulado, rentabilidade, instituicaoLiquidada, extratosMovimentacao };

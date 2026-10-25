@@ -91,7 +91,7 @@ async function lerArquivo(file) {
     }
     if (ehExtratoXP(texto)) {
       const ex = lerExtratoXP(texto);
-      return { linhas: carteiraDoExtratoXP(ex, src, [...Object.keys(U), ...Object.keys(UF)]), resumo: { banco: 'XP', ...resumoExtratoXP(ex) } };
+      return { linhas: carteiraDoExtratoXP(ex, src, [...Object.keys(U), ...Object.keys(UF)]), resumo: { banco: 'XP', tipo: 'extrato', ...resumoExtratoXP(ex) } };
     }
     return { linhas: lerTextoPDF(linhas, src), ir: /BENS E DIREITOS|DECLARA/i.test(texto) };
   }
@@ -195,7 +195,7 @@ function diagnosticar() {
   const faltam = itens.filter(x => !(x.v > 0)).length;
   if (faltam) F.push({ sev: 'info', txt: `${faltam} item(ns) sem valor ficaram fora da conta. Clique aqui para completar o valor.`, alvo: de(x => !(x.v > 0)) });
   // custos cobrados (extratos)
-  const ext = Object.values(EXTRATOS).filter(e => e.tipo !== 'informe'); const taxas = ext.reduce((s, e) => s + (e.taxas || 0), 0), meses = ext.reduce((s, e) => s + mesesPeriodo(e), 0) || 1;
+  const ext = extratosMovimentacao(EXTRATOS); const taxas = ext.reduce((s, e) => s + (e.taxas || 0), 0), meses = ext.reduce((s, e) => s + mesesPeriodo(e), 0) || 1;
   // instituições em liquidação: o dinheiro depende do FGC
   const liq = val.filter(x => liquidada(x.h));
   if (liq.length) { const v = liq.reduce((s, x) => s + x.v, 0); pen(14, 'alta', `${brl(v)} em ${liq.length} título(s) do ${liquidada(liq[0].h).nome}, que teve liquidação extrajudicial decretada pelo Banco Central em ${liquidada(liq[0].h).quando}. O FGC cobre até R$ 250 mil por CPF por conglomerado (principal + juros até a liquidação). Confira no app do FGC se o pagamento já saiu; se já recebeu, remova esses itens.`, { itens: liq.map(x => x.h) }); }
@@ -553,18 +553,20 @@ function renderRenda(d) {
   const mes = {}; Object.values(EXTRATOS).forEach(e => Object.entries(e.rendaPorMes || {}).forEach(([k, v]) => mes[k] = (mes[k] || 0) + v));
   const ks = Object.keys(mes).sort();
   const est = d.itens.reduce((s, x) => s + (x.a && x.v > 0 ? x.v * x.a.dy : 0), 0);
-  const ext = Object.values(EXTRATOS).filter(e => e.tipo !== 'informe'), infs = Object.values(EXTRATOS).filter(e => e.tipo === 'informe');
+  const ext = extratosMovimentacao(EXTRATOS), infs = Object.values(EXTRATOS).filter(e => e.tipo === 'informe');
   const taxas = ext.reduce((s, e) => s + (e.taxas || 0), 0), meses = ext.reduce((s, e) => s + mesesPeriodo(e), 0) || 1;
   const rec = ks.length ? Object.values(mes).reduce((a, b) => a + b, 0) / Math.max(1, ks.length) : 0;
+  const lista = xs => [...new Set(xs.filter(Boolean))].map(esc).join(' · ');
+  // blocos: rótulo, valor em destaque, detalhe em texto comum
   $('#eRendaKv').innerHTML = [
-    ks.length ? ['Recebido por mês (extratos)', `<b class="up">${brl(rec)}</b> <span class="sub">média de ${ks.length} meses</span>`] : null,
-    ['Renda estimada pelos proventos de 12 meses', `<b>${brl(est / 12)}/mês</b> <span class="sub">${brl(est)}/ano · ${pct(est / (d.total || 1), 1)} da carteira</span>`],
-    taxas ? ['Taxas cobradas na conta', `<b class="down">${brl(taxas / meses)}/mês</b> <span class="sub">${ext.flatMap(e => e.taxasNome).join(', ')}</span>`] : null,
-    ext.some(e => e.irRetido) ? ['IR retido no período', brl(ext.reduce((s, e) => s + (e.irRetido || 0), 0))] : null,
-    ...infs.map(e => [`Rendimentos em ${e.ano} (informe)`, `<b class="up">${brl(e.rendIsentos + e.rendTributados)}</b> <span class="sub">${brl(e.rendIsentos)} isentos + ${brl(e.rendTributados)} líquidos tributados · posição em 31/12: ${brl(e.posicaoFim)} (a custo, sem ações/FIIs)</span>`]),
-    ...infs.filter(e => e.vencidos?.length).map(e => [`Venceram/resgatados em ${e.ano}`, `<span class="sub">${e.vencidos.map(esc).join('; ')}</span>`]),
-    ext.some(e => e.resgates?.length) ? ['Resgatados no período', `<span class="sub">${ext.flatMap(e => e.resgates).map(esc).join('; ')}</span>`] : null
-  ].filter(Boolean).map(([k, v]) => `<span>${k}</span><span class="num">${v}</span>`).join('');
+    ks.length ? ['Recebido por mês', brl(rec), `média de ${ks.length} meses nos extratos`, 'up'] : null,
+    ['Renda estimada', `${brl(est / 12)}/mês`, `${brl(est)} por ano pelos proventos de 12 meses · ${pct(est / (d.total || 1), 1)} da carteira`],
+    taxas ? ['Taxas cobradas na conta', `${brl(taxas / meses)}/mês`, `${brl(taxas / meses * 12)} por ano · ${lista(ext.flatMap(e => e.taxasNome || []))}`, 'down'] : null,
+    ext.some(e => e.irRetido) ? ['IR retido no período', brl(ext.reduce((s, e) => s + (e.irRetido || 0), 0)), 'descontado na fonte dos rendimentos'] : null,
+    ...infs.map(e => [`Rendimentos em ${e.ano}`, brl(e.rendIsentos + e.rendTributados), `${brl(e.rendIsentos)} isentos + ${brl(e.rendTributados)} tributados (líquidos) · posição em 31/12: ${brl(e.posicaoFim)} a custo, sem ações e FIIs`, 'up']),
+    ...infs.filter(e => e.vencidos?.length).map(e => [`Venceram ou resgatados em ${e.ano}`, `${e.vencidos.length} títulos`, lista(e.vencidos)]),
+    ext.some(e => e.resgates?.length) ? ['Resgatados nos extratos', `${ext.flatMap(e => e.resgates || []).length} resgates`, lista(ext.flatMap(e => e.resgates || []).map(r => r.replace(/ \((-?[\d.]+)\)$/, (_, v) => ` (${brl(+v)})`)))] : null
+  ].filter(Boolean).map(([l, v, det, c]) => `<div class="mini"><div class="l">${l}</div><div class="v num ${c || ''}">${v}</div><div class="d">${det}</div></div>`).join('');
   chart('chRenda', { type: 'bar', data: { labels: ks.map(k => k.split('-').reverse().join('/')), datasets: [{ label: 'Proventos e cupons', data: ks.map(k => Math.round(mes[k] * 100) / 100), backgroundColor: css('--up'), borderRadius: 3 }] },
     options: { ...base(), plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${brl(c.raw)}` } } }, scales: { x: axis(), y: { ...axis(), ticks: { ...axis().ticks, callback: v => brl(v) } } } } });
   $('#chRendaBox').hidden = !ks.length;
