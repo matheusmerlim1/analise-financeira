@@ -128,6 +128,15 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .mini .l{font-size:10.5px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .mini .v{font-size:17px;font-weight:700;margin:2px 0}
 .mini .d{font-size:11.5px;color:var(--ink-2);line-height:1.45;overflow-wrap:anywhere}
+.num .sub{font-family:Inter,system-ui,sans-serif}
+.so-mob{display:none}
+@media(max-width:700px){
+  .so-desk{display:none}
+  .so-mob{display:inline}
+  .strip{display:flex;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px}
+  .strip .tile{flex:0 0 138px;scroll-snap-align:start}
+  .verdict{font-size:19px}
+}
 tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
 @keyframes flash{0%,60%{box-shadow:0 0 0 2px var(--warn);background:var(--warn-soft)}100%{box-shadow:none}}
 .flash,.flash td{animation:flash 2.4s ease-out}
@@ -144,8 +153,8 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
 
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="painel" aria-selected="true">Painel</button>
-    <button role="tab" data-tab="carteira">Monte sua carteira</button>
-    <button role="tab" data-tab="rf">Buscador de renda fixa</button>
+    <button role="tab" data-tab="carteira">Carteira</button>
+    <button role="tab" data-tab="rf">Renda fixa</button>
     <button role="tab" data-tab="acoes">Ações</button>
     <button role="tab" data-tab="news">Notícias</button>
     <button role="tab" data-tab="macro">Juros e câmbio</button>
@@ -195,7 +204,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
     <div class="seg" id="modoSeg"><button data-modo="zero">Montar do zero</button><button data-modo="exist">Analisar minha carteira</button></div>
     <div id="modoExist" hidden>
       <div class="note" id="eAlerta" hidden style="margin-bottom:10px;border:1px solid var(--down);background:var(--down-soft)"></div>
-      <div class="card" id="patCard" style="margin-bottom:10px">
+      <div class="card" id="patCard">
         <div class="grid g3" style="align-items:center">
           <div>
             <div class="sub" style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;font-size:11px">Seu patrimônio</div>
@@ -207,35 +216,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
           <div class="scroll short"><table id="patInst"></table></div>
         </div>
       </div>
-      <div class="card" id="linhaCard" style="margin-bottom:10px" hidden>
-        <h2>Linha do tempo do patrimônio — todos os documentos</h2>
-        <p class="sub">Cruza as declarações do IRPF, os informes de rendimentos, os registros diários e a carteira de hoje. Importe as declarações de outros anos para completar.</p>
-        <div class="grid g21 mt">
-          <div class="chart" style="height:260px"><canvas id="chLinha"></canvas></div>
-          <div><h2 style="font-size:12.5px">O que o cruzamento mostra</h2><ul class="why" id="cruzList"></ul></div>
-        </div>
-        <div class="scroll short mt"><table id="linhaTbl"></table></div>
-      </div>
-      <div class="card" id="evoCard" style="margin-bottom:10px">
-        <div class="row sp">
-          <div><h2>Evolução do patrimônio</h2><p class="sub" id="evoSub"></p></div>
-          <div class="row">
-            <div class="seg" id="evoPer" style="margin:0"><button data-v="21">1M</button><button data-v="63">3M</button><button data-v="126">6M</button><button data-v="252">1A</button><button data-v="504">2A</button></div>
-            <div class="seg" id="evoModo" style="margin:0"><button data-v="valor">R$</button><button data-v="pct">%</button></div>
-            <select id="evoAgr"><option value="total">Total</option><option value="classe">Por classe</option><option value="ativo">Por investimento</option></select>
-          </div>
-        </div>
-        <div class="row mt">
-          <label class="ck"><input type="checkbox" id="evoCdi"> comparar com CDI</label>
-          <label class="ck"><input type="checkbox" id="evoIbov"> comparar com Ibovespa</label>
-          <label class="ck"><input type="checkbox" id="evoProv"> incluir proventos (estimado)</label>
-          <label class="ck"><input type="checkbox" id="evoReal" checked> mostrar registros reais</label>
-        </div>
-        <div class="chips mt" id="evoSeries"></div>
-        <div class="chart mt" style="height:300px"><canvas id="chEvo"></canvas></div>
-        <p class="sub mt">Simulação com as quantidades de hoje aplicadas aos preços de cada dia (ações e FIIs) e o valor de hoje descontado para trás pelo CDI diário ou pela taxa do título (renda fixa, fundos, COE). Os pontos são o patrimônio real registrado nos dias em que você abriu a página ou salvou a carteira.</p>
-      </div>
-      <div class="grid g12">
+      <div class="grid g12 mt">
         <div class="card">
           <h2>Sua carteira atual</h2>
           <p class="sub">Digite o que você tem ou importe um arquivo. Tudo é lido e guardado só neste navegador.</p>
@@ -263,17 +244,42 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
             <div class="chart sm"><canvas id="chExist"></canvas></div>
           </div>
           <div class="scroll short mt"><table id="eClasses"></table></div>
+          <h2 class="mt">Pontos de atenção</h2><p class="sub">Clique num item para ir até ele e ajustar.</p>
+          <div class="scroll mt" style="max-height:300px"><table id="eFind"></table></div>
         </div>
-      </div>
-      <div class="card mt" id="eSnapCard" hidden>
-        <h2>Desde que você salvou</h2>
-        <p class="sub mt" id="eSnapTxt"></p>
-        <div class="scroll short mt"><table id="eSnap"></table></div>
       </div>
       <div class="card mt">
         <h2>Como está cada investimento</h2>
         <p class="sub" id="eAvSub"></p>
         <div class="scroll mt"><table id="eAv"></table></div>
+      </div>
+      <div class="card mt" id="evoCard">
+        <div class="row sp">
+          <div><h2>Evolução do patrimônio</h2><p class="sub" id="evoSub"></p></div>
+          <div class="row">
+            <div class="seg" id="evoPer" style="margin:0"><button data-v="21">1M</button><button data-v="63">3M</button><button data-v="126">6M</button><button data-v="252">1A</button><button data-v="504">2A</button></div>
+            <div class="seg" id="evoModo" style="margin:0"><button data-v="valor">R$</button><button data-v="pct">%</button></div>
+            <select id="evoAgr"><option value="total">Total</option><option value="classe">Por classe</option><option value="ativo">Por investimento</option></select>
+          </div>
+        </div>
+        <div class="row mt">
+          <label class="ck"><input type="checkbox" id="evoCdi"> comparar com CDI</label>
+          <label class="ck"><input type="checkbox" id="evoIbov"> comparar com Ibovespa</label>
+          <label class="ck"><input type="checkbox" id="evoProv"> incluir proventos (estimado)</label>
+          <label class="ck"><input type="checkbox" id="evoReal" checked> mostrar registros reais</label>
+        </div>
+        <div class="chips mt" id="evoSeries"></div>
+        <div class="chart mt" style="height:300px"><canvas id="chEvo"></canvas></div>
+        <p class="sub mt">Simulação com as quantidades de hoje aplicadas aos preços de cada dia (ações e FIIs) e o valor de hoje descontado para trás pelo CDI diário ou pela taxa do título (renda fixa, fundos, COE). Os pontos são o patrimônio real registrado nos dias em que você abriu a página ou salvou a carteira.</p>
+      </div>
+      <div class="card mt" id="linhaCard" hidden>
+        <h2>Linha do tempo do patrimônio — todos os documentos</h2>
+        <p class="sub">Cruza as declarações do IRPF, os informes de rendimentos, os registros diários e a carteira de hoje. Importe as declarações de outros anos para completar.</p>
+        <div class="grid g21 mt">
+          <div class="chart" style="height:260px"><canvas id="chLinha"></canvas></div>
+          <div><h2 style="font-size:12.5px">O que o cruzamento mostra</h2><ul class="why" id="cruzList"></ul></div>
+        </div>
+        <div class="scroll short mt"><table id="linhaTbl"></table></div>
       </div>
       <div class="card mt">
         <h2>Renda passiva e custos</h2>
@@ -282,14 +288,16 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
           <div id="chRendaBox"><p class="sub" style="margin-bottom:6px">Proventos e cupons recebidos por mês (extratos)</p><div class="chart" style="height:230px"><canvas id="chRenda"></canvas></div></div>
         </div>
       </div>
+      <div class="card mt" id="eApCard"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="mt" id="eApProj" style="font-size:12.5px;line-height:1.6"></p><p class="sub mt" id="eRebal"></p></div>
       <div class="card mt">
         <div class="row sp"><h2>Seus ativos</h2><div class="row"><button class="btn" id="eAdd">+ Adicionar</button><button class="btn" id="eSave" title="Baixa a carteira e o retrato do mercado de hoje para reavaliar depois">Salvar carteira (JSON)</button><label class="btn" style="cursor:pointer">Abrir carteira salva<input type="file" id="eOpen" accept=".json" hidden></label><button class="btn ghost" id="eClear">Limpar tudo</button></div></div>
         <p class="sub">Valor atual de cada aplicação. Para ações e FIIs, a quantidade basta: o valor sai da cotação. Linhas importadas aparecem marcadas; passe o mouse para ver o que falta.</p>
         <div class="scroll mt"><table id="eTbl"></table></div>
       </div>
-      <div class="grid g2 mt">
-        <div class="card"><h2>Pontos de atenção</h2><div class="scroll short mt"><table id="eFind"></table></div></div>
-        <div class="card" id="eApCard"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="mt" id="eApProj" style="font-size:12.5px;line-height:1.6"></p><p class="sub mt" id="eRebal"></p></div>
+      <div class="card mt" id="eSnapCard" hidden>
+        <h2>Desde que você salvou</h2>
+        <p class="sub mt" id="eSnapTxt"></p>
+        <div class="scroll short mt"><table id="eSnap"></table></div>
       </div>
       <div class="card mt">
         <div class="row sp"><h2>Análise com IA (Claude)</h2><span class="pill acc">opcional</span></div>

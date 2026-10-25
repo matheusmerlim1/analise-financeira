@@ -16,7 +16,13 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
-async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return r.json(); }
+// a API do Banco Central às vezes recusa um pedido isolado: tenta de novo antes de desistir
+async function getJSON(url, tentativas = /bcb\.gov\.br/.test(url) ? 3 : 1) {
+  for (let i = 1; ; i++) {
+    try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); return await r.json(); }
+    catch (e) { if (i >= tentativas) throw e; await new Promise(ok => setTimeout(ok, 800 * i)); }
+  }
+}
 const parseBr = s => { const [d, m, y] = s.split('/'); return new Date(+y, m - 1, +d); };
 const tempoRel = iso => {
   if (!iso) return '';
@@ -315,8 +321,9 @@ function tabela(el, id, cols, rows, opt = {}) {
   const st = SORT[id] || opt.sort || null;
   const col = st && cols.find(c => c.k === st.k);
   const data = col ? [...rows].sort((a, b) => { const x = col.v(a), y = col.v(b); return ((x ?? -Infinity) > (y ?? -Infinity) ? 1 : (x ?? -Infinity) < (y ?? -Infinity) ? -1 : 0) * st.dir; }) : rows;
-  el.innerHTML = `<thead><tr>${cols.map(c => `<th class="${c.v ? 's' : ''} ${c.r ? 'r' : ''} ${st?.k === c.k ? 'on' : ''}" data-k="${c.k}">${c.h}${c.v ? `<span class="ar">${st?.k === c.k ? (st.dir > 0 ? '▲' : '▼') : '↕'}</span>` : ''}</th>`).join('')}</tr></thead>
-    <tbody>${data.map((r, i) => `<tr data-i="${rows.indexOf(r)}" class="${opt.rowCls ? opt.rowCls(r, i) : ''}">${cols.map(c => `<td class="${c.r ? 'r' : ''} ${c.w ? 'w' : ''}">${c.f(r)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="sub">${opt.empty || 'Nada encontrado.'}</td></tr>`}</tbody>`;
+  // c.cls: classe extra da coluna (ex.: "so-desk" esconde a coluna no celular)
+  el.innerHTML = `<thead><tr>${cols.map(c => `<th class="${c.v ? 's' : ''} ${c.r ? 'r' : ''} ${st?.k === c.k ? 'on' : ''} ${c.cls || ''}" data-k="${c.k}">${c.h}${c.v ? `<span class="ar">${st?.k === c.k ? (st.dir > 0 ? '▲' : '▼') : '↕'}</span>` : ''}</th>`).join('')}</tr></thead>
+    <tbody>${data.map((r, i) => `<tr data-i="${rows.indexOf(r)}" class="${opt.rowCls ? opt.rowCls(r, i) : ''}">${cols.map(c => `<td class="${c.r ? 'r' : ''} ${c.w ? 'w' : ''} ${c.cls || ''}">${c.f(r)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="sub">${opt.empty || 'Nada encontrado.'}</td></tr>`}</tbody>`;
   el.querySelectorAll('th.s').forEach(th => th.onclick = () => {
     const k = th.dataset.k, cur = SORT[id] || opt.sort;
     SORT[id] = { k, dir: cur?.k === k ? -cur.dir : (cols.find(c => c.k === k).asc ? 1 : -1) };
@@ -338,19 +345,19 @@ function renderStrip(pv) {
   const real = (1 + M.cdi) / (1 + M.ipca12) - 1, sp = D?.indices?.sp500 ? analisarSerie(D.indices.sp500) : null, nl = leituraNoticias();
   const u12 = M.usdHist.find(x => x.d >= new Date(Date.now() - 365 * 864e5));
   const t = [
-    ['Selic', pct(M.selic), `Focus 12m: ${pct(selicAt(12))}`],
+    ['Selic', pct(M.selic), `Focus: ${pct(selicAt(12))} em 12m`],
     ['CDI', pct(M.cdi), 'ao ano'],
     ['IPCA 12m', pct(M.ipca12), 'meta 3%'],
     ['Juro real', pct(real), real > .06 ? 'muito alto' : 'moderado'],
-    ['Ibovespa', IB ? nf(IB.last) : '—', IB ? `<span class="${cls(IB.dia)}">${sgnPct(IB.dia, 2)}</span> · 12m ${sgnPct(IB.r12)}` : 'sem dados'],
+    ['Ibovespa', IB ? nf(IB.last) : '—', IB ? `<span class="${cls(IB.dia)}">${sgnPct(IB.dia, 2)}</span> · 12m ${sgnPct(IB.r12, 0)}` : 'sem dados'],
     ['Dólar', 'R$ ' + nf(M.usd, 3), u12 ? `12m: ${sgnPct(M.usd / u12.v - 1)}` : ''],
-    ['S&P 500', sp ? nf(sp.last) : '—', sp ? `<span class="${cls(sp.dia)}">${sgnPct(sp.dia, 2)}</span> · 12m ${sgnPct(sp.r12)}` : ''],
+    ['S&P 500', sp ? nf(sp.last) : '—', sp ? `<span class="${cls(sp.dia)}">${sgnPct(sp.dia, 2)}</span> · 12m ${sgnPct(sp.r12, 0)}` : ''],
     ['Previsão Ibov', pv ? nivel(pv.score).l : '—', '4 semanas'],
     ['Notícias', nl.label, nl.h ? `${nl.h.pos}+ / ${nl.h.neg}− (7d)` : '']
   ];
   // patrimônio do usuário (carteira.js), quando já há investimentos cadastrados
   const pat = typeof patrimonioAtual === 'function' ? patrimonioAtual() : null;
-  if (pat?.total) t.unshift(['Seu patrimônio', brl(pat.total), `${pat.n} investimentos${pat.semValor ? ` · ${pat.semValor} sem valor` : ''}`, 'carteira']);
+  if (pat?.total) t.unshift(['Seu patrimônio', brl(pat.total), `${pat.n} itens${pat.semValor ? ` · ${pat.semValor} sem valor` : ''}`, 'carteira']);
   $('#strip').innerHTML = t.map(([l, v, d, ir]) => `<div class="tile"${ir ? ` data-ir="${ir}" style="cursor:pointer;border-color:var(--accent)" title="abrir minha carteira"` : ''}><div class="l">${l}</div><div class="v num">${v}</div><div class="d">${d}</div></div>`).join('');
   $('#strip').querySelectorAll('[data-ir]').forEach(el => el.onclick = () => { goto(el.dataset.ir); if (typeof modo === 'function') modo('exist'); });
   const st = $('#status');
@@ -366,7 +373,7 @@ function renderPainel(pv) {
   $('#ibScore').textContent = `nota ${s > 0 ? '+' : ''}${s.toFixed(2).replace('.', ',')}`;
   $('#ibBack').innerHTML = IB?.bt ? `No histórico de 2 anos, o sinal técnico do Ibovespa acertou a direção das 4 semanas seguintes em <b>${pct(IB.bt.acc, 0)}</b> das ${IB.bt.n} vezes (apostar sempre em alta: ${pct(IB.bt.base, 0)}). ${IB.bt.acc < IB.bt.base ? 'Sozinho, o técnico não superou essa referência: use a previsão como leitura do momento, não como aposta.' : 'O sinal superou a referência no período.'}` : 'Sem histórico suficiente.';
   tabela($('#ibParts'), 'ibParts', [
-    { k: 'n', h: 'Componente', f: r => r.nome }, { k: 't', h: 'Leitura', w: 1, f: r => `<span class="sub">${r.txt}</span>` },
+    { k: 'n', h: 'Componente', w: 1, f: r => `${r.nome}<br><span class="sub">${r.txt}</span>` },
     { k: 'p', h: 'Peso', r: 1, f: r => `<span class="num">${Math.round(r.peso * 100)}%</span>` },
     { k: 'v', h: 'Sinal', r: 1, f: r => `<span class="pill ${r.v > .1 ? 'up' : r.v < -.1 ? 'down' : 'flat'} num">${r.v > 0 ? '+' : ''}${r.v.toFixed(2).replace('.', ',')}</span>` }
   ], pv.partes, { rerender: () => renderPainel(pv) });
@@ -426,18 +433,17 @@ function renderRF() {
   $('#fCount').textContent = `${rows.length} de ${OFF.length} ofertas · CDI médio esperado no período: ${pct(cdiMedio(f.prazo || 24))}`;
   const best = rows.length ? Math.max(...rows.filter(r => r.a.ok).map(r => r.a.liqAA)) : null;
   tabela($('#rfTbl'), 'rf', [
-    { k: 'plat', h: 'Plataforma', f: r => r.o.plat, v: r => r.o.plat, asc: 1 },
-    { k: 'tipo', h: 'Produto', f: r => `<b>${r.o.tipo}</b>`, v: r => r.o.tipo, asc: 1 },
-    { k: 'em', h: 'Emissor', f: r => `<span class="sub">${esc(r.o.emissor)}</span>`, v: r => r.o.emissor, asc: 1 },
-    { k: 'taxa', h: 'Taxa', f: r => `<span class="num">${fmtTaxa(r.o)}</span>`, v: r => r.a.bruto },
-    { k: 'prazo', h: 'Prazo', r: 1, f: r => `<span class="num">${r.o.liq ? 'diária' : Math.round(r.o.prazo / 30) + 'm'}</span>`, v: r => r.o.liq ? 0 : r.o.prazo, asc: 1 },
-    { k: 'min', h: 'Mínimo', r: 1, f: r => `<span class="num">${brl(r.o.min)}</span>`, v: r => r.o.min, asc: 1 },
-    { k: 'ir', h: 'IR', r: 1, f: r => r.a.ir ? `<span class="num">${pct(r.a.ir, 1)}</span>` : '<span class="pill up">isento</span>', v: r => r.a.ir, asc: 1 },
-    { k: 'bruto', h: 'Bruto a.a.', r: 1, f: r => `<span class="num">${pct(r.a.bruto)}</span>`, v: r => r.a.bruto },
+    // o que decide vem primeiro (no celular, antes da rolagem lateral)
+    { k: 'tipo', h: 'Oferta', f: r => `<b>${r.o.tipo}</b> <span class="num">${fmtTaxa(r.o)}</span><br><span class="sub">${esc(r.o.plat)} · ${esc(r.o.emissor)}</span>`, v: r => r.o.tipo, asc: 1 },
     { k: 'liq', h: 'Líquido a.a.', r: 1, f: r => `<b class="num">${pct(r.a.liqAA)}</b>`, v: r => r.a.liqAA },
-    { k: 'real', h: 'Real a.a.', r: 1, f: r => `<span class="num">${pct(r.a.real)}</span>`, v: r => r.a.real },
     { k: 'fin', h: `Você recebe`, r: 1, f: r => `<b class="num">${brl(r.a.final)}</b><br><span class="sub num">em ${Math.round(r.a.diasTot / 30.4)}m</span>`, v: r => r.a.final },
     { k: 'luc', h: 'Lucro', r: 1, f: r => `<span class="num up">+${brl(r.a.final - f.valor)}</span>`, v: r => r.a.final - f.valor },
+    { k: 'prazo', h: 'Prazo', r: 1, f: r => `<span class="num">${r.o.liq ? 'diária' : Math.round(r.o.prazo / 30) + 'm'}</span>`, v: r => r.o.liq ? 0 : r.o.prazo, asc: 1 },
+    { k: 'min', h: 'Mínimo', r: 1, f: r => `<span class="num">${brl(r.o.min)}</span>`, v: r => r.o.min, asc: 1 },
+    { k: 'plat', h: 'Plataforma', f: r => esc(r.o.plat), v: r => r.o.plat, asc: 1 },
+    { k: 'ir', h: 'IR', r: 1, f: r => r.a.ir ? `<span class="num">${pct(r.a.ir, 1)}</span>` : '<span class="pill up">isento</span>', v: r => r.a.ir, asc: 1 },
+    { k: 'bruto', h: 'Bruto a.a.', r: 1, f: r => `<span class="num">${pct(r.a.bruto)}</span>`, v: r => r.a.bruto },
+    { k: 'real', h: 'Real a.a.', r: 1, f: r => `<span class="num">${pct(r.a.real)}</span>`, v: r => r.a.real },
     { k: 'eq', h: 'Equiv. CDB', r: 1, f: r => `<span class="num sub">${r.a.eqCdb.toFixed(0)}% CDI</span>`, v: r => r.a.eqCdb },
     { k: 'g', h: 'Garantia', f: r => FGC.has(r.o.tipo) ? '<span class="pill up">FGC</span>' : r.o.tipo.startsWith('Tesouro') ? '<span class="pill acc">Tesouro</span>' : '<span class="pill warn">sem FGC</span>' },
     { k: 'st', h: '', f: r => r.a.ok ? '' : `<span class="pill flat">${r.a.motivos[0]}</span>` }
@@ -622,8 +628,8 @@ function renderCarteira() {
   $('#cResumo').textContent = `${linhas.length} posições · ${p.perfil}`;
   const corDe = k => css(CLASSES.find(c => c.k === k).cor);
   tabela($('#cTbl'), 'cart', [
-    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${corDe(l.cl)}" title="${CLASSES.find(c => c.k === l.cl).nome}"></i><b>${esc(l.nome)}</b> <span class="sub">${l.emissor ? esc(l.emissor) + ' · ' : ''}${l.acao ? '~' + Math.floor(l.v / l.acao.last) + (l.acao.fii ? ' cotas' : ' ações') : l.prazo ? 'vence em ' + Math.round(l.prazo / 30) + 'm' : l.etf ? 'ETF' : 'resgate diário'}</span>${l.trade ? `<br><span class="sub num">entrada R$ ${nf(l.trade.entrada, 2)} · stop <span class="down">R$ ${nf(l.trade.stop, 2)}</span> · alvo <span class="up">R$ ${nf(l.trade.alvo, 2)}</span></span>` : ''}`, v: l => CLASSES.findIndex(c => c.k === l.cl), asc: 1 },
-    { k: 'o', h: 'Plataforma', f: l => esc(l.onde), v: l => l.onde, asc: 1 },
+    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${corDe(l.cl)}" title="${CLASSES.find(c => c.k === l.cl).nome}"></i><b>${esc(l.nome)}</b> <span class="sub">${l.emissor ? esc(l.emissor) + ' · ' : ''}${l.acao ? '~' + Math.floor(l.v / l.acao.last) + (l.acao.fii ? ' cotas' : ' ações') : l.prazo ? 'vence em ' + Math.round(l.prazo / 30) + 'm' : l.etf ? 'ETF' : 'resgate diário'}<span class="so-mob"> · ${esc(l.onde)}</span></span>${l.trade ? `<br><span class="sub num">entrada R$ ${nf(l.trade.entrada, 2)} · stop <span class="down">R$ ${nf(l.trade.stop, 2)}</span> · alvo <span class="up">R$ ${nf(l.trade.alvo, 2)}</span></span>` : ''}`, v: l => CLASSES.findIndex(c => c.k === l.cl), asc: 1 },
+    { k: 'o', h: 'Plataforma', cls: 'so-desk', f: l => esc(l.onde), v: l => l.onde, asc: 1 },
     { k: 'p', h: '%', r: 1, f: l => `<b class="num">${pct(l.v / V, 1)}</b>`, v: l => l.v },
     { k: 'v', h: 'Valor', r: 1, f: l => `<span class="num">${brl(l.v)}</span>`, v: l => l.v },
     { k: 'r', h: 'Ret. a.a.', r: 1, f: l => l.retDy ? `<span class="num">DY ${pct(l.ret, 1)}</span>` : l.ret != null ? `<span class="num">${pct(l.ret)}</span>` : (l.acao ? pillNivel(l.acao.prev) : '<span class="pill warn">variável</span>'), v: l => l.ret ?? retAc }
@@ -658,7 +664,7 @@ function renderCarteira() {
   const setores = new Set(ac.map(l => l.emissor)); ck.push(['Diversificação entre setores', ac.length <= 1 || setores.size === ac.length, `${setores.size} setores diferentes`]);
   tabela($('#cRisk'), 'risk', [
     { k: 's', h: '', f: r => r[1] ? '<span class="pill up">OK</span>' : '<span class="pill warn">ATENÇÃO</span>' },
-    { k: 'n', h: 'Regra', f: r => r[0] }, { k: 'd', h: 'Situação', w: 1, f: r => `<span class="sub">${r[2]}</span>` }
+    { k: 'n', h: 'Regra', w: 1, f: r => `${r[0]}<br><span class="sub">${r[2]}</span>` }
   ], ck, { rerender: renderCarteira });
 }
 function renderSliders(w, on) {
@@ -685,8 +691,8 @@ function renderAcoes() {
   $('#aCount').textContent = `${rows.length} de ${Object.keys(SRC).length} ${fii ? 'FIIs' : 'ações'}`;
   if (!aSel || !SRC[aSel]) aSel = [...rows].sort((a, b) => b.prev - a.prev)[0]?.sym;
   tabela($('#aTbl'), 'acoes', [
-    { k: 's', h: 'Ativo', f: a => `<b>${a.sym}</b>`, v: a => a.sym, asc: 1 },
-    { k: 'se', h: 'Setor', f: a => `<span class="sub">${a.setor}</span>`, v: a => a.setor, asc: 1 },
+    { k: 's', h: 'Ativo', f: a => `<b>${a.sym}</b><br><span class="sub">${a.setor}</span>`, v: a => a.sym, asc: 1 },
+    { k: 'pv', h: 'Previsão 4 sem.', f: a => pillNivel(a.prev), v: a => a.prev },
     { k: 'p', h: 'Preço', r: 1, f: a => `<span class="num">${nf(a.last, 2)}</span>`, v: a => a.last },
     { k: 'd', h: 'Dia', r: 1, f: a => `<span class="num ${cls(a.dia)}">${sgnPct(a.dia, 2)}</span>`, v: a => a.dia },
     { k: 'r1', h: '1m', r: 1, f: a => `<span class="num ${cls(a.r1)}">${sgnPct(a.r1)}</span>`, v: a => a.r1 },
@@ -697,7 +703,6 @@ function renderAcoes() {
     { k: 'vol', h: 'Vol.', r: 1, f: a => `<span class="num">${pct(a.vol, 0)}</span>`, v: a => a.vol, asc: 1 },
     { k: 't', h: 'Técnico', f: a => pillNivel(a.tec), v: a => a.tec },
     { k: 'n', h: 'Notícias', f: a => humorPill(a.h), v: a => a.h?.m ?? 0 },
-    { k: 'pv', h: 'Previsão 4 sem.', f: a => pillNivel(a.prev), v: a => a.prev },
     { k: 'bt', h: 'Acerto hist.', r: 1, f: a => a.bt ? `<span class="num ${a.bt.acc > a.bt.base + .03 ? 'up' : a.bt.acc < a.bt.base - .03 ? 'down' : ''}" title="sempre alta: ${pct(a.bt.base, 0)} · ${a.bt.n} sinais">${pct(a.bt.acc, 0)}</span> <span class="sub num">/${pct(a.bt.base, 0)}</span>` : '—', v: a => a.bt ? a.bt.acc - a.bt.base : null }
   ], rows, { sort: { k: 'pv', dir: -1 }, rerender: renderAcoes, rowCls: a => a.sym === aSel ? 'sel' : '', onRow: a => { aSel = a.sym; renderAcoes(); }, empty: D ? 'Nenhuma ação com esses filtros.' : 'Sem dados de ações (dados.js ausente).' });
   const a = SRC[aSel]; if (!a) return;
@@ -748,14 +753,14 @@ function renderMacro() {
   const fpts = (obj, mult, last) => [last, ...Object.keys(obj).sort().filter(y => +y >= new Date().getFullYear()).map(y => ({ x: new Date(+y, 11, 31).getTime(), y: obj[y] * mult }))].filter(Boolean);
   const yP = { ...axis(), ticks: { ...axis().ticks, callback: v => v + '%' } };
   const sh = M.selicHist.map(x => ({ x: x.d.getTime(), y: x.v * 100 }));
-  chart('chSelic', { type: 'line', data: { datasets: [{ label: 'Selic', data: sh, borderColor: css('--c1'), stepped: true, pointRadius: 0, borderWidth: 2 }, { label: 'Focus', data: fpts(M.focusSelic, 100, sh.at(-1)), borderColor: css('--c2'), borderDash: [5, 4], pointRadius: 3, borderWidth: 2 }] }, options: { ...base(), plugins: { legend: legend(), tooltip: tip(v => v.toFixed(2) + '%') }, scales: { x: tScale(), y: yP } } });
+  chart('chSelic', { type: 'line', data: { datasets: [{ label: 'Selic', data: sh, borderColor: css('--c1'), stepped: true, pointRadius: 0, borderWidth: 2 }, { label: 'Focus', data: fpts(M.focusSelic, 100, sh.at(-1)), borderColor: css('--c2'), borderDash: [5, 4], pointRadius: 3, borderWidth: 2 }] }, options: { ...base(), plugins: { legend: legend(), tooltip: tip(v => v.toFixed(2) + '%') }, scales: { x: { ...tScale(), min: sh[0]?.x }, y: yP } } });
   const ih = M.ipcaHist.map(x => ({ x: x.d.getTime(), y: x.v * 100 }));
-  chart('chIpca', { type: 'line', data: { datasets: [{ label: 'IPCA 12m', data: ih, borderColor: css('--c5'), pointRadius: 0, borderWidth: 2, tension: .25 }, { label: 'Focus', data: fpts(M.focusIpca, 100, ih.at(-1)), borderColor: css('--c2'), borderDash: [5, 4], pointRadius: 3, borderWidth: 2 }] }, options: { ...base(), plugins: { legend: legend(), tooltip: tip(v => v.toFixed(2) + '%') }, scales: { x: tScale(), y: yP } } });
+  chart('chIpca', { type: 'line', data: { datasets: [{ label: 'IPCA 12m', data: ih, borderColor: css('--c5'), pointRadius: 0, borderWidth: 2, tension: .25 }, { label: 'Focus', data: fpts(M.focusIpca, 100, ih.at(-1)), borderColor: css('--c2'), borderDash: [5, 4], pointRadius: 3, borderWidth: 2 }] }, options: { ...base(), plugins: { legend: legend(), tooltip: tip(v => v.toFixed(2) + '%') }, scales: { x: { ...tScale(), min: ih[0]?.x }, y: yP } } });
   const uh = M.usdHist.map(x => ({ x: x.d.getTime(), y: x.v }));
   chart('chUsd', { type: 'line', data: { datasets: [{ label: 'PTAX', data: uh, borderColor: css('--c3'), pointRadius: 0, borderWidth: 2 }, { label: 'Focus', data: fpts(M.focusUsd, 1, uh.at(-1)), borderColor: css('--c2'), borderDash: [5, 4], pointRadius: 3, borderWidth: 2 }] }, options: { ...base(), plugins: { legend: legend(), tooltip: tip(v => 'R$ ' + v.toFixed(3)) }, scales: { x: tScale(), y: { ...axis(), ticks: { ...axis().ticks, callback: v => 'R$ ' + v.toFixed(2) } } } } });
   if (IB) {
     const x = IB.x, ini = Math.max(0, x.c.length - 252), pts = a => a.slice(ini).map((v, i) => ({ x: x.t[ini + i] * 1000, y: v }));
-    chart('chIbov', { type: 'line', data: { datasets: [{ label: 'Ibovespa', data: pts(x.c), borderColor: css('--c1'), pointRadius: 0, borderWidth: 2 }, { label: 'MM50', data: pts(IB.I.sma[50]), borderColor: css('--c2'), pointRadius: 0, borderWidth: 1.2 }, { label: 'MM200', data: pts(IB.I.sma[200]), borderColor: css('--c4'), pointRadius: 0, borderWidth: 1.2 }] }, options: { ...base(), plugins: { legend: legend(), tooltip: tip(v => nf(v)) }, scales: { x: tScale(), y: { ...axis(), ticks: { ...axis().ticks, callback: v => (v / 1000).toFixed(0) + ' mil' } } } } });
+    chart('chIbov', { type: 'line', data: { datasets: [{ label: 'Ibovespa', data: pts(x.c), borderColor: css('--c1'), pointRadius: 0, borderWidth: 2 }, { label: 'MM50', data: pts(IB.I.sma[50]), borderColor: css('--c2'), pointRadius: 0, borderWidth: 1.2 }, { label: 'MM200', data: pts(IB.I.sma[200]), borderColor: css('--c4'), pointRadius: 0, borderWidth: 1.2 }] }, options: { ...base(), plugins: { legend: legend(), tooltip: tip(v => nf(v)) }, scales: { x: { ...tScale(), min: x.t[ini] * 1000, max: x.t.at(-1) * 1000 }, y: { ...axis(), ticks: { ...axis().ticks, callback: v => (v / 1000).toFixed(0) + ' mil' } } } } });
   }
   const real = (1 + M.cdi) / (1 + M.ipca12) - 1, s12 = selicAt(12), s24 = selicAt(24);
   $('#mWhy').innerHTML = [

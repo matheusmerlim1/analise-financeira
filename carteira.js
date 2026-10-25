@@ -300,8 +300,8 @@ function renderExist() {
   registrarHistorico(d);
   renderAlerta(d); renderPatrimonio(d); renderLinhaTempo(d); renderEvolucao(d); renderAvaliacao(d); renderRenda(d); renderSnap(d);
   const sevPill = s => ({ alta: '<span class="pill down">importante</span>', 'média': '<span class="pill warn">médio</span>', baixa: '<span class="pill flat">leve</span>', info: '<span class="pill acc">info</span>', ok: '<span class="pill up">ok</span>' }[s]);
-  tabela($('#eFind'), 'eF', [{ k: 's', h: '', f: r => sevPill(r.sev) }, { k: 't', h: 'O que encontrei', w: 1, f: r => r.txt },
-    { k: 'ir', h: '', f: r => r.alvo ? `<span class="pill acc" title="ir até ${r.alvo.itens ? 'os itens' : 'a seção'} para ajustar">${r.alvo.itens ? `ajustar ${r.alvo.itens.length}` : 'ver'} →</span>` : '' }],
+  // uma coluna só: selo, texto e a ação na mesma linha (no celular não vira uma torre de texto)
+  tabela($('#eFind'), 'eF', [{ k: 't', h: 'O que encontrei', w: 1, f: r => `${sevPill(r.sev)} ${r.txt}${r.alvo ? ` <span class="pill acc" title="ir até ${r.alvo.itens ? 'os itens' : 'a seção'} para ajustar">${r.alvo.itens ? `ajustar ${r.alvo.itens.length}` : 'ver'} →</span>` : ''}` }],
     d.total ? d.F : [], { rerender: renderExist, empty: 'Adicione ou importe seus investimentos.', rowCls: r => r.alvo ? 'link' : '', onRow: r => r.alvo && irPara(r.alvo) });
   const ap = planoAporte(d); d.aporte = ap;
   $('#eApSub').textContent = p.aporte ? `${brl(p.aporte)} · ${p.prazo} meses · ${OBJETIVOS[p.obj].split(' (')[0].toLowerCase()}` : 'informe o valor';
@@ -520,7 +520,7 @@ function renderPatrimonio(d) {
     options: { ...base(), cutout: '60%', plugins: { legend: { position: 'right', labels: { color: css('--ink-2'), boxWidth: 9, font: { size: 10 } } }, tooltip: { callbacks: { label: c => ` ${c.label}: ${brl(c.raw)} (${pct(c.raw / (T || 1), 1)})` } } } } });
   const porInst = {}; val.forEach(x => { const k = (x.h.inst || 'sem instituição').replace(/\s+(INVESTIMENTOS|CCTVM|S\/?A|S\.A\.).*$/i, '').trim() || 'sem instituição'; porInst[k] = (porInst[k] || 0) + x.v; });
   tabela($('#patInst'), 'patInst', [
-    { k: 'i', h: 'Onde está', f: r => `<b>${esc(r[0])}</b>`, v: r => r[0], asc: 1 },
+    { k: 'i', h: 'Onde está', w: 1, f: r => `<b>${esc(r[0])}</b>`, v: r => r[0], asc: 1 },
     { k: 'v', h: 'Valor', r: 1, f: r => `<span class="num">${brl(r[1])}</span>`, v: r => r[1] },
     { k: 'p', h: '%', r: 1, f: r => `<span class="num">${pct(r[1] / (T || 1), 0)}</span>`, v: r => r[1] }
   ], Object.entries(porInst), { sort: { k: 'v', dir: -1 }, rerender: () => renderPatrimonio(d), empty: 'Sem investimentos com valor.' });
@@ -537,13 +537,13 @@ function renderAvaliacao(d) {
     { k: 'q', h: 'Qtd.', r: 1, f: x => x.h.qtd ? `<span class="num">${nf(x.h.qtd)}</span>` : '', v: x => +x.h.qtd || 0 },
     { k: 'v', h: 'Valor (editável)', r: 1, f: x => `<input class="n num" type="number" step="100" data-av-valor="${HOLD.indexOf(x.h)}" value="${x.v > 0 ? Math.round(x.v * 100) / 100 : ''}" placeholder="falta" style="width:96px;border:1px solid var(--line);background:var(--panel-2)" title="corrija o valor de hoje; o patrimônio é recalculado">`, v: x => x.v },
     { k: 'p', h: '%', r: 1, f: x => `<span class="num">${pct(x.v / T, 1)}</span>`, v: x => x.v },
-    { k: 'rd', h: 'Proventos (extrato)', r: 1, f: x => x.h.renda ? `<span class="num up">${brl(x.h.renda)}</span>` : '', v: x => x.h.renda || 0 },
+    { k: 'rd', h: 'Proventos (extrato)', r: 1, cls: 'so-desk', f: x => x.h.renda ? `<span class="num up">${brl(x.h.renda)}</span>` : '', v: x => x.h.renda || 0 },
     { k: 'dy', h: 'DY 12m', r: 1, f: x => x.a?.dy ? `<span class="num">${pct(x.a.dy, 1)}</span>` : '', v: x => x.a?.dy ?? -1 },
     { k: 'r12', h: 'Preço 12m', r: 1, f: x => x.a ? `<span class="num ${cls(x.a.r12)}">${sgnPct(x.a.r12)}</span>` : '', v: x => x.a?.r12 ?? -9 },
     { k: 'tot', h: 'Total 12m', r: 1, f: x => ret(x) != null ? `<b class="num ${ret(x) >= benchCDI() ? 'up' : 'down'}">${sgnPct(ret(x))}</b>` : '', v: x => ret(x) ?? -9 },
     { k: 'pv', h: 'Previsão', f: x => x.a ? pillNivel(x.a.prev) : '', v: x => x.a?.prev ?? -9 },
     { k: 've', h: 'Avaliação', f: x => `<span class="pill ${x.av.c}" title="${esc(x.av.m)}">${x.av.v}</span>`, v: x => x.av.ord, asc: 1 },
-    { k: 'm', h: 'Por quê', w: 1, f: x => `<span class="sub">${esc(x.av.m)}</span>` },
+    { k: 'm', h: 'Por quê', w: 1, cls: 'so-desk', f: x => `<span class="sub">${esc(x.av.m)}</span>` },
     { k: 'x', h: '', f: x => `<button class="btn ghost" data-av-del="${HOLD.indexOf(x.h)}" title="apagar este investimento (não volta ao reimportar)">✕</button>` }
   ], linhas, { sort: { k: 'tot', dir: -1 }, rerender: () => renderAvaliacao(d), rowCls: x => top.has(x) ? 'best' : '', empty: 'Adicione ou importe seus investimentos.' });
   $('#eAv').querySelectorAll('[data-av-valor]').forEach(el => el.onchange = () => ajustarValor(HOLD[+el.dataset.avValor], el.value));
