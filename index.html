@@ -227,8 +227,27 @@ footer{margin-top:20px;color:var(--ink-3);font-size:11px}
           <label class="ck"><input type="checkbox" id="fElig" checked> esconder o que não cabe no meu valor/prazo</label>
         </div>
       </div>
-      <div class="row sp"><span class="sub" id="fCount"></span><span class="sub">Clique no cabeçalho para ordenar.</span></div>
+      <div class="row sp"><span class="sub" id="fCount"></span><span class="sub">Clique no cabeçalho para ordenar · clique numa oferta para simular.</span></div>
       <div class="scroll tall mt"><table id="rfTbl"></table></div>
+    </div>
+    <div class="card mt" id="simCard" hidden>
+      <div class="row sp">
+        <div><h2 id="simTitle">Simulação</h2><p class="sub" id="simSub"></p></div>
+        <button class="btn ghost" id="simClose" title="Fechar">✕</button>
+      </div>
+      <div class="grid g12 mt">
+        <div>
+          <div class="form">
+            <label class="f">Quanto quer investir (R$)<input id="simValor" type="number" min="0" step="500"></label>
+            <label class="f" id="simPrazoLbl">Resgatar em (meses)<input id="simPrazo" type="number" min="1" max="240"></label>
+          </div>
+          <div class="kv mt" id="simKv"></div>
+        </div>
+        <div>
+          <div class="chart"><canvas id="chSim"></canvas></div>
+          <p class="sub mt" id="simCmp"></p>
+        </div>
+      </div>
     </div>
     <div class="grid g2 mt">
       <div class="card"><h2>Melhor oferta por plataforma</h2><p class="sub">Com os filtros atuais. Clique para filtrar só ela.</p><div class="scroll short"><table id="rfPlat"></table></div></div>

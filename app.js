@@ -120,13 +120,14 @@ function avaliar(o, valor, hMeses) {
   }
   const liqAA = Math.pow(1 + tot, 365 / diasTot) - 1;
   const cdiH = cdiMedio(diasTot / 30.4);
+  const final = valor * (1 + tot);
   const motivos = [];
   const car = o.tipo === 'LCI' ? 360 : o.tipo === 'LCA' ? 270 : 0;
   if (o.prazo < car) motivos.push(`${o.tipo} exige ≥ ${car / 30} meses`);
   if (valor < o.min) motivos.push(`mínimo ${brl(o.min)}`);
   if (hMeses && !o.liq && o.prazo > hMeses * 30.4 + 15) motivos.push('vence depois do prazo');
   return {
-    bruto, ir, liqAA, dias, ok: !motivos.length, motivos,
+    bruto, ir, liqAA, dias, diasTot, final, ok: !motivos.length, motivos,
     real: (1 + liqAA) / (1 + ipcaMedio(diasTot / 30.4)) - 1,
     eqCdb: liqAA / ((1 - aliquotaIR(diasTot)) * cdiH) * 100,  // % do CDI que um CDB tributado precisaria
     pctCdi: liqAA / (cdiH * (1 - aliquotaIR(diasTot))) * 100
@@ -388,10 +389,14 @@ function renderRF() {
     { k: 'bruto', h: 'Bruto a.a.', r: 1, f: r => `<span class="num">${pct(r.a.bruto)}</span>`, v: r => r.a.bruto },
     { k: 'liq', h: 'Líquido a.a.', r: 1, f: r => `<b class="num">${pct(r.a.liqAA)}</b>`, v: r => r.a.liqAA },
     { k: 'real', h: 'Real a.a.', r: 1, f: r => `<span class="num">${pct(r.a.real)}</span>`, v: r => r.a.real },
+    { k: 'fin', h: `Você recebe`, r: 1, f: r => `<b class="num">${brl(r.a.final)}</b><br><span class="sub num">em ${Math.round(r.a.diasTot / 30.4)}m</span>`, v: r => r.a.final },
+    { k: 'luc', h: 'Lucro', r: 1, f: r => `<span class="num up">+${brl(r.a.final - f.valor)}</span>`, v: r => r.a.final - f.valor },
     { k: 'eq', h: 'Equiv. CDB', r: 1, f: r => `<span class="num sub">${r.a.eqCdb.toFixed(0)}% CDI</span>`, v: r => r.a.eqCdb },
     { k: 'g', h: 'Garantia', f: r => FGC.has(r.o.tipo) ? '<span class="pill up">FGC</span>' : r.o.tipo.startsWith('Tesouro') ? '<span class="pill acc">Tesouro</span>' : '<span class="pill warn">sem FGC</span>' },
     { k: 'st', h: '', f: r => r.a.ok ? '' : `<span class="pill flat">${r.a.motivos[0]}</span>` }
-  ], rows, { sort: { k: 'liq', dir: -1 }, rerender: renderRF, rowCls: r => !r.a.ok ? 'off' : r.a.liqAA === best ? 'best' : '', empty: 'Nenhuma oferta com esses filtros.' });
+  ], rows, { sort: { k: 'liq', dir: -1 }, rerender: renderRF, rowCls: r => r.o === SIM.o ? 'sel' : !r.a.ok ? 'off' : r.a.liqAA === best ? 'best' : '', empty: 'Nenhuma oferta com esses filtros.',
+    onRow: r => { abrirSim(r.o, f); } });
+  $('#rfTbl').querySelectorAll('tbody tr').forEach(tr => tr.style.cursor = 'pointer');
   const porPlat = [...new Set(rows.map(r => r.o.plat))].map(pl => {
     const xs = rows.filter(r => r.o.plat === pl && r.a.ok).sort((a, b) => b.a.liqAA - a.a.liqAA);
     return { pl, n: xs.length, best: xs[0], top3: xs.slice(0, 3).reduce((s, x) => s + x.a.liqAA, 0) / Math.max(1, Math.min(3, xs.length)) };
@@ -404,6 +409,67 @@ function renderRF() {
     { k: 't3', h: 'Média top 3', r: 1, f: r => `<span class="num">${pct(r.top3)}</span>`, v: r => r.top3 }
   ], porPlat, { sort: { k: 'bl', dir: -1 }, rerender: renderRF, onRow: r => { F.plats = F.plats.length === 1 && F.plats[0] === r.pl ? plataformas() : [r.pl]; store.set('af2.filtros', F); renderChips(); renderRF(); } });
 }
+/* simulador: quanto o valor investido vira no resgate */
+const SIM = { o: null };
+function abrirSim(o, f) {
+  const novo = SIM.o !== o; SIM.o = o;
+  if (novo) {
+    $('#simValor').value = f.valor || 10000;
+    $('#simPrazo').value = o.liq ? (f.prazo || 12) : Math.round(o.prazo / 30.4);
+  }
+  $('#simCard').hidden = false; renderRF(); renderSim();
+  if (novo) $('#simCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function simular(o, V, meses) {
+  // carrega até o vencimento (ou até o resgate, se tiver liquidez diária); mostra o valor de cada mês
+  const dias = o.liq ? Math.round(meses * 30.4) : o.prazo, m = dias / 30.4;
+  let bruto;
+  if (o.idx === 'CDI') { const d = Math.pow(1 + cdiMedio(m), 1 / 252) - 1; bruto = Math.pow(1 + d * o.taxa / 100, 252) - 1; }
+  else if (o.idx === 'Pré') bruto = o.taxa / 100;
+  else bruto = (1 + ipcaMedio(m)) * (1 + o.taxa / 100) - 1;
+  const custA = o.tipo.startsWith('Tesouro') ? ((o.tipo === 'Tesouro Selic' && V <= 10000) ? 0 : .002) : 0;
+  const isento = ISENTO.has(o.tipo);
+  const em = d => {
+    const g = V * (Math.pow(1 + bruto, d / 365) - 1), r = V * (Math.pow(1 + bruto - custA, d / 365) - 1);
+    const ir = isento ? 0 : r * aliquotaIR(d);
+    return { d, brutoFinal: V + g, custodia: g - r, ir, liquido: V + r - ir, aliq: isento ? 0 : aliquotaIR(d) };
+  };
+  const fim = em(dias), serie = [];
+  for (let k = 0; k <= Math.ceil(m); k++) serie.push(em(Math.min(dias, Math.round(k * 30.4))));
+  const ipca = ipcaMedio(m), realFinal = fim.liquido / Math.pow(1 + ipca, dias / 365);
+  const poup = V * Math.pow(M.selic > .085 ? 1.005 * (1 + M.trMes) : 1 + .7 * selicAt(m / 2) / 12, m);
+  const cdiAA = Math.pow(1 + Math.pow(1 + cdiMedio(m), 1 / 252) - 1, 252) - 1;
+  const cdb100 = V + V * (Math.pow(1 + cdiAA, dias / 365) - 1) * (1 - aliquotaIR(dias));
+  return { ...fim, bruto, dias, meses: m, serie, realFinal, ipca, poup, cdb100, isento };
+}
+function renderSim() {
+  const o = SIM.o; if (!o) return;
+  const V = Math.max(0, +$('#simValor').value || 0), meses = Math.max(1, +$('#simPrazo').value || 12);
+  $('#simPrazo').disabled = !o.liq;
+  $('#simPrazoLbl').firstChild.textContent = o.liq ? 'Resgatar em (meses)' : 'Prazo (vencimento do título)';
+  const s = simular(o, V, meses), a = avaliar(o, V, 0);
+  $('#simTitle').textContent = `${o.tipo} ${fmtTaxa(o)} · ${o.plat}`;
+  $('#simSub').innerHTML = `${esc(o.emissor)} · ${o.liq ? 'liquidez diária' : `vence em ${Math.round(o.prazo / 30.4)} meses (${new Date(Date.now() + o.prazo * 864e5).toLocaleDateString('pt-BR')})`} · mínimo ${brl(o.min)} · ${FGC.has(o.tipo) ? 'garantia do FGC' : o.tipo.startsWith('Tesouro') ? 'garantia do Tesouro' : 'sem FGC'}${V < o.min ? ' · <b class="down">valor abaixo do mínimo</b>' : ''}`;
+  const lucro = s.liquido - V;
+  $('#simKv').innerHTML = [
+    ['Você investe', brl(V)],
+    [`Valor bruto em ${Math.round(s.meses)} meses`, brl(s.brutoFinal)],
+    s.custodia > .5 ? ['Custódia B3 (0,20% a.a.)', '− ' + brl(s.custodia)] : null,
+    ['Imposto de renda', s.isento ? '<span class="pill up">isento</span>' : `− ${brl(s.ir)} <span class="sub">(${pct(s.aliq, 1)} do rendimento)</span>`],
+    ['<b>Você recebe no resgate</b>', `<b class="num" style="font-size:18px">${brl(s.liquido)}</b>`],
+    ['Lucro líquido', `<b class="up">+${brl(lucro)}</b> <span class="sub">(${sgnPct(lucro / (V || 1))} no período · ${pct(a.liqAA)} a.a.)</span>`],
+    ['Descontada a inflação', `${brl(s.realFinal)} <span class="sub">em poder de compra de hoje (IPCA esperado ${pct(s.ipca, 1)} a.a.)</span>`]
+  ].filter(Boolean).map(([k, v]) => `<span>${k}</span><span class="num">${v}</span>`).join('');
+  const dif = s.liquido - s.poup, difCdb = s.liquido - s.cdb100;
+  $('#simCmp').innerHTML = `Mesmo valor e prazo: poupança daria <b>${brl(s.poup)}</b> (${dif >= 0 ? `<span class="up">esta oferta rende ${brl(dif)} a mais</span>` : `<span class="down">${brl(-dif)} a menos</span>`}); um CDB de 100% do CDI daria <b>${brl(s.cdb100)}</b> (${difCdb >= 0 ? `<span class="up">+${brl(difCdb)}</span>` : `<span class="down">−${brl(-difCdb)}</span>`}). CDI e IPCA futuros pela curva do Focus.`;
+  const lbl = s.serie.map(x => x.d === 0 ? 'hoje' : `${Math.round(x.d / 30.4)}m`);
+  chart('chSim', { type: 'line', data: { labels: lbl, datasets: [
+    { label: 'Líquido (já sem IR)', data: s.serie.map(x => Math.round(x.liquido)), borderColor: css('--up'), backgroundColor: 'transparent', pointRadius: 0, borderWidth: 2 },
+    { label: 'Bruto', data: s.serie.map(x => Math.round(x.brutoFinal)), borderColor: css('--ink-3'), borderDash: [4, 3], pointRadius: 0, borderWidth: 1.2 },
+    { label: 'Investido', data: s.serie.map(() => V), borderColor: css('--c1'), pointRadius: 0, borderWidth: 1 }
+  ] }, options: { ...base(), plugins: { legend: legend(), tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ${brl(c.raw)}` } } }, scales: { x: { ...axis(), ticks: { ...axis().ticks, maxTicksLimit: 8 } }, y: { ...axis(), ticks: { ...axis().ticks, callback: v => brl(v) } } } } });
+}
+
 function renderOffEditor() {
   const custom = !!store.get('af2.offers', null);
   $('#offSrc').textContent = `${OFF.length} ofertas · ${custom ? 'suas edições neste navegador' : 'do ofertas.js'}`;
@@ -689,6 +755,8 @@ async function atualizarDados() {
 document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => goto(b.dataset.tab));
 document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => goto(b.dataset.goto));
 ['#fValor', '#fPrazo', '#fIdx', '#fBusca', '#fIsento', '#fFgc', '#fLiq', '#fElig'].forEach(id => $(id).addEventListener('input', renderRF));
+['#simValor', '#simPrazo'].forEach(id => $(id).addEventListener('input', renderSim));
+$('#simClose').onclick = () => { SIM.o = null; $('#simCard').hidden = true; renderRF(); };
 ['#cValor', '#cPrazo', '#cPerfil', '#cPlat', '#cRes', '#cCap', '#cCustom'].forEach(id => $(id).addEventListener('input', renderCarteira));
 ['#aBusca', '#aSetor', '#aSinal'].forEach(id => $(id).addEventListener('input', renderAcoes));
 ['#nBusca', '#nCat', '#nTk', '#nSent'].forEach(id => $(id).addEventListener('input', renderNoticias));
