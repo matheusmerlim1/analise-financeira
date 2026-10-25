@@ -1,0 +1,124 @@
+const fs = require('fs');
+const path = require('path');
+const imp = require('../importadores');
+
+// extrato fictício no formato da XP (nenhum dado real)
+const extrato = fs.readFileSync(path.join(__dirname, 'fixtures', 'xp_movimentacao_ficticia.txt'), 'utf8');
+
+describe('números e datas', () => {
+  test('lê valores no formato brasileiro', () => {
+    expect(imp.numBR('R$ 1.234,56')).toBe(1234.56);
+    expect(imp.numBR('-R$ 7.152,75')).toBe(-7152.75);
+    expect(imp.numBR(42)).toBe(42);
+    expect(imp.numBR('sem número')).toBeNaN();
+  });
+  test('converte vencimentos de vários formatos', () => {
+    expect(imp.venc('15/03/2028')).toBe('2028-03-15');
+    expect(imp.venc('CDB PICPAY - AGO/2029')).toBe('2029-08-15');
+    expect(imp.venc('TESOURO IPCA+ 2035')).toBe('2035-12-31');
+    expect(imp.venc('')).toBe('');
+  });
+  test('reconhece o tipo pelo nome', () => {
+    expect(imp.tipoPorTexto('Tesouro Selic 2029')).toBe('Tesouro Selic');
+    expect(imp.tipoPorTexto('LCA BANCO ABC')).toBe('LCA');
+    expect(imp.tipoPorTexto('COE BANCO XP')).toBe('COE');
+    expect(imp.tipoPorTexto('HGLG11')).toBe('FII');
+    expect(imp.tipoPorTexto('PETR4')).toBe('Ação');
+  });
+});
+
+describe('extrato de conta da XP', () => {
+  const ex = imp.lerExtratoXP(extrato);
+  test('é reconhecido como extrato da XP', () => expect(imp.ehExtratoXP(extrato)).toBe(true));
+  test('lê período e saldo', () => {
+    expect(ex.periodo).toEqual({ de: '2026-08-01', ate: '2026-10-31' });
+    expect(ex.saldo).toBe(250);
+  });
+  test('lê proventos com quantidade', () => {
+    expect(ex.proventos.filter(p => p.tk === 'HGLG11')).toHaveLength(2);
+    expect(ex.proventos.find(p => p.tk === 'BBAS3')).toMatchObject({ qtd: 20, valor: 8, tipo: 'dividendo' });
+  });
+  test('separa IR retido, taxas, COE e resgates (inclusive descrições em duas linhas)', () => {
+    expect(ex.irRetido).toBeCloseTo(17.5);
+    expect(ex.taxas.reduce((s, t) => s + t.valor, 0)).toBe(100);
+    expect(ex.coes).toEqual([expect.objectContaining({ codigo: 'XP0000AAAA1', venc: '2028-06-15', cupom: 50 })]);
+    expect(ex.resgates.map(r => r.nome)).toEqual(expect.arrayContaining(['LCA BANCO EXEMPLO - DEZ/2026']));
+  });
+
+  const linhas = imp.carteiraDoExtratoXP(ex, 'extrato.pdf', ['PETR4', 'WEGE3', 'HGLG11']);
+  const por = n => linhas.find(l => l.ativo === n);
+  test('monta a carteira com a quantidade do provento mais recente', () => {
+    expect(por('HGLG11')).toMatchObject({ tipo: 'FII', qtd: 10, renda: 19.8, src: 'extrato.pdf' });
+    expect(por('MXRF11')).toMatchObject({ tipo: 'FII', qtd: 100 });
+    expect(por('BBAS3')).toMatchObject({ tipo: 'Ação', qtd: 20 });
+  });
+  test('inclui ações vistas só no aluguel (BTC) ou por ISIN, sem quantidade', () => {
+    expect(por('WEGE3')).toMatchObject({ tipo: 'Ação', qtd: '' });
+    expect(por('PETR4')).toMatchObject({ tipo: 'Ação', qtd: '' });
+  });
+  test('inclui CDB comprado, COE, fundo aplicado e saldo; não inclui o que foi resgatado', () => {
+    expect(por('CDB BANCO EXEMPLO - AGO/2029')).toMatchObject({ tipo: 'CDB', valor: 2000, venc: '2029-08-15' });
+    expect(linhas.find(l => l.tipo === 'COE')).toMatchObject({ venc: '2028-06-15', renda: 50 });
+    expect(por('Fundo Credito Exemplo')).toMatchObject({ valor: 500 });
+    expect(por('Saldo disponível na XP')).toMatchObject({ tipo: 'Conta corrente', valor: 250 });
+    expect(linhas.some(l => /LCA BANCO EXEMPLO|FUNDO EXEMPLO/.test(l.ativo))).toBe(false);
+  });
+  test('resume renda e custos', () => {
+    const r = imp.resumoExtratoXP(ex);
+    expect(r.rendaTotal).toBeCloseTo(11 + 10 + 8 + 8.8 + 50);
+    expect(r.taxas).toBe(100);
+    expect(r.taxasNome).toEqual(['FEE FIXO']);
+  });
+});
+
+describe('extrato da XP como o pdf.js entrega (espaços entre os caracteres, descrição acima e abaixo da linha da data)', () => {
+  const texto = fs.readFileSync(path.join(__dirname, 'fixtures', 'xp_movimentacao_pdfjs_ficticia.txt'), 'utf8');
+  const ex = imp.lerExtratoXP(texto);
+  test('lê período, saldo e valores com separadores espaçados', () => {
+    expect(ex.periodo).toEqual({ de: '2026-08-01', ate: '2026-10-31' });
+    expect(ex.saldo).toBe(1250);
+    expect(ex.proventos.find(p => p.tk === 'HGLG11')).toMatchObject({ qtd: 10, valor: 11 });
+  });
+  test('junta a descrição quebrada em volta da linha da data', () => {
+    expect(ex.irRetido).toBeCloseTo(10);
+    expect(ex.coes).toEqual([expect.objectContaining({ codigo: 'XP0000AAAA1', venc: '2028-06-15', cupom: 50 })]);
+    expect(ex.isins).toContain('PETR4');
+    expect(ex.rf).toEqual([expect.objectContaining({ tipo: 'CDB', valor: 2000, venc: '2029-08-15' })]);
+    expect(ex.taxas.map(t => t.valor)).toEqual([50]);
+  });
+  const linhas = imp.carteiraDoExtratoXP(ex, 'x.pdf');
+  test('ação usa a maior quantidade do período (proventos menores por causa de ações emprestadas)', () => {
+    expect(linhas.find(l => l.ativo === 'BBAS3')).toMatchObject({ tipo: 'Ação', qtd: 20 });
+  });
+  test('nomes sem os espaços do pdf.js ("S.A.")', () => {
+    expect(linhas.find(l => l.tipo === 'COE').ativo).toBe('COE XP0000AAAA1 (BANCO XP S.A.)');
+  });
+});
+
+describe('planilhas (layout do extrato de posição da B3)', () => {
+  const linhas = imp.lerTabela([
+    ['Produto', 'Instituição', 'Código de Negociação', 'Quantidade', 'Preço de Fechamento', 'Valor Atualizado'],
+    ['ITUB4 - ITAU UNIBANCO', 'XP', 'ITUB4', '200', '48,30', '9.660,00'],
+    ['', '', '', '', 'Total', '9.660,00'],
+  ], 'Acoes', 'posicao.xlsx');
+  test('lê a linha do ativo e ignora o total', () => {
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]).toMatchObject({ tipo: 'Ação', ativo: 'ITUB4', qtd: 200, valor: 9660, src: 'posicao.xlsx' });
+  });
+  test('sem cabeçalho reconhecível, não inventa nada', () => {
+    expect(imp.lerTabela([['a', 'b'], ['1', '2']])).toEqual([]);
+  });
+});
+
+describe('PDF da declaração do IR', () => {
+  test('junta discriminações quebradas em várias linhas e usa o valor mais recente', () => {
+    const linhas = imp.lerTextoPDF([
+      'BENS E DIREITOS', 'GRUPO CÓDIGO DISCRIMINAÇÃO SITUAÇÃO EM 31/12/2024 SITUAÇÃO EM 31/12/2025',
+      '03 01 300 AÇÕES PETR4 PETROBRAS PN', 'CUSTODIADAS NA CORRETORA 9.500,00 11.200,00',
+      '04 03 LCI BANCO EXEMPLO', 'VENCIMENTO 2027 0,00 10.000,00',
+      'TOTAL 9.500,00 21.200,00'
+    ]);
+    expect(linhas.map(l => [l.tipo, l.valor])).toEqual([['Ação', 11200], ['LCI', 10000]]);
+    expect(linhas[1].venc).toBe('2027-12-31');
+  });
+});

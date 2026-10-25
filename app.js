@@ -96,7 +96,6 @@ function ipcaMedio(months) {
 const ISENTO = new Set(['LCA', 'LCI', 'CRA', 'CRI', 'Debênture incentivada']);
 const FGC = new Set(['LCA', 'LCI', 'CDB']);
 const TIPOS = ['LCA', 'LCI', 'CDB', 'CRA', 'CRI', 'Debênture incentivada', 'Tesouro Selic', 'Tesouro Pré', 'Tesouro IPCA+'];
-const aliquotaIR = d => d <= 180 ? .225 : d <= 360 ? .20 : d <= 720 ? .175 : .15;
 const fmtTaxa = o => o.idx === 'CDI' ? `${String(o.taxa).replace('.', ',')}% CDI` : o.idx === 'Pré' ? `${String(o.taxa).replace('.', ',')}% pré` : `IPCA+${String(o.taxa).replace('.', ',')}%`;
 const plataformas = () => [...new Set(OFF.map(o => o.plat))];
 
@@ -208,7 +207,7 @@ function rebuild() {
   D = window.DADOS || null;
   NEWS = D ? D.noticias.filter(n => n.titulo) : [];
   SETOR_DE = {}; U = {};
-  if (!D) { SETORES = []; IB = null; return; }
+  if (!D) { SETORES = []; IB = null; UF = {}; return; }
   Object.entries(D.setores).forEach(([s, ts]) => ts.forEach(t => SETOR_DE[t] = s));
   Object.entries(D.acoes).forEach(([t, x]) => {
     try { if (x.c.length > 60) U[t] = { sym: t, setor: SETOR_DE[t] || '—', nome: x.nome, ...analisarSerie(x), h: humor(NEWS.filter(n => n.tickers.includes(t))) }; } catch {}
@@ -226,6 +225,48 @@ function rebuild() {
     a.prev = .7 * a.tec + .15 * a.nNews + .15 * a.nSetor;
   });
   IB = D.indices?.ibov ? analisarSerie(D.indices.ibov) : null;
+  Object.values(U).forEach(a => a.dy = (D.acoes[a.sym].div12 || 0) / a.last);
+  // FIIs: mesma análise técnica + dividend yield; "setor" = segmento
+  UF = {};
+  Object.entries(D.segmentos_fii || {}).forEach(([seg, ts]) => ts.forEach(t => SETOR_DE[t] = 'FII ' + seg));
+  Object.entries(D.fiis || {}).forEach(([t, x]) => {
+    try { if (x.c.length > 60) UF[t] = { sym: t, fii: true, setor: SETOR_DE[t] || 'FII', nome: x.nome, ...analisarSerie(x), dy: (x.div12 || 0) / (x.preco || x.c.at(-1)), h: humor(NEWS.filter(n => n.tickers.includes(t))) }; } catch {}
+  });
+  const segR3 = {}; Object.values(UF).forEach(f => (segR3[f.setor] = segR3[f.setor] || []).push(f.r3));
+  Object.values(UF).forEach(f => {
+    const r = segR3[f.setor]; f.nNews = f.h ? clip(f.h.m) : 0; f.nSetor = clip(r.reduce((a, b) => a + b, 0) / r.length * 5);
+    f.prev = .7 * f.tec + .15 * f.nNews + .15 * f.nSetor;
+  });
+}
+let UF = {};
+const ativoDe = t => U[t] || UF[t] || null;
+
+/* escolhe ações/FIIs para a parte de renda variável conforme o objetivo:
+ * dividendos = maior DY sem tendência de queda forte (ações e FIIs); trade = sinal técnico forte (só ações, com stop e alvo);
+ * equilibrado = melhor previsão ajustada à volatilidade. No máximo um por setor/segmento. */
+const OBJETIVOS = { equilibrado: 'Equilibrado (crescimento)', dividendos: 'Dividendos (renda mensal)', trade: 'Trade (curto prazo)' };
+function candidatosRV(obj, n, opt = {}) {
+  const excl = opt.excluirSetores || new Set(), usados = new Set(), out = [];
+  let pool, score, peso;
+  if (obj === 'dividendos') {
+    pool = [...Object.values(U), ...Object.values(UF)].filter(a => a.dy >= .05 && a.dy <= .25 && a.prev > -.3 && a.r12 > -.25);
+    score = a => a.dy * (1 + .5 * a.prev); peso = a => a.dy / Math.max(a.vol, .12);
+  } else if (obj === 'trade') {
+    pool = Object.values(U).filter(a => a.prev >= .3 && a.rsi < 75);
+    score = a => a.prev + a.r1; peso = a => a.prev / Math.max(a.vol, .15);
+  } else {
+    pool = Object.values(U).filter(a => a.prev >= .1);
+    score = a => a.prev; peso = a => a.prev / Math.max(a.vol, .15);
+  }
+  pool.sort((a, b) => (excl.has(a.setor) - excl.has(b.setor)) || score(b) - score(a)).forEach(a => {
+    if (out.length < n && !usados.has(a.setor)) { usados.add(a.setor); out.push({ sym: a.sym, a, w: peso(a), ...(obj === 'trade' ? planoTrade(a) : {}) }); }
+  });
+  return out;
+}
+/* trade: entrada no preço atual, stop em ~2 desvios de 10 pregões, alvo com risco/retorno 2:1 */
+function planoTrade(a) {
+  const risco = Math.min(.15, Math.max(.03, 2 * a.vol / Math.sqrt(252) * Math.sqrt(10)));
+  return { entrada: a.last, stop: a.last * (1 - risco), alvo: a.last * (1 + 2 * risco), risco };
 }
 function previsaoIbov() {
   const p = [], univ = Object.values(U);
@@ -507,7 +548,7 @@ function pesosAuto(p, pv) {
   return { w: { res: p.res, pos: rf * (1 - travShare), trav: rf * travShare, acoes: ac }, notas };
 }
 function perfilCart() {
-  return { valor: +$('#cValor').value || 0, prazo: Math.max(1, +$('#cPrazo').value || 12), perfil: $('#cPerfil').value, plat: $('#cPlat').value,
+  return { valor: +$('#cValor').value || 0, prazo: Math.max(1, +$('#cPrazo').value || 12), perfil: $('#cPerfil').value, plat: $('#cPlat').value, obj: $('#cObj').value,
     res: clip((+$('#cRes').value || 0) / 100, 0, 1), cap: clip((+$('#cCap').value || 8) / 100, .01, .5), custom: $('#cCustom').checked };
 }
 function melhores(pool, filtro, valor, prazo, limiteEmissor = 250000) {
@@ -523,31 +564,7 @@ function melhores(pool, filtro, valor, prazo, limiteEmissor = 250000) {
   }
   return { linhas: out, falta };
 }
-function dimensionar(cands, total, cap, minOrdem = 100) {
-  // trader-budget: pesos → teto por ativo com redistribuição → descarta fatias abaixo do mínimo → arredonda
-  let xs = cands.map(c => ({ ...c }));
-  const lim = x => x.lim ?? cap;  // teto individual (ex.: descontando o que a pessoa já tem da ação)
-  for (let pass = 0; pass < 10; pass++) {
-    xs.forEach(x => x.cap = false);
-    let resto = total, livres = [...xs];
-    while (livres.length) {
-      const sw = livres.reduce((s, x) => s + x.w, 0);
-      livres.forEach(x => x.v = resto * x.w / sw);
-      const over = livres.filter(x => x.v > lim(x));
-      if (!over.length) break;
-      over.forEach(x => { x.v = lim(x); x.cap = true; resto -= lim(x); });
-      livres = livres.filter(x => !x.cap);
-    }
-    const peq = xs.filter(x => x.v < minOrdem);
-    if (!peq.length || peq.length === xs.length) break;
-    xs = xs.filter(x => x.v >= minOrdem);
-  }
-  const usado = xs.reduce((s, x) => s + x.v, 0);
-  xs.forEach(x => x.v = Math.floor(x.v));
-  const alvo = xs.filter(x => !x.cap).sort((a, b) => b.v - a.v)[0];
-  if (alvo) alvo.v += Math.round(usado - xs.reduce((s, x) => s + x.v, 0));
-  return { linhas: xs.filter(x => x.v > 0), sobra: Math.max(0, total - usado) };
-}
+/* dimensionar() e distribuirAporte() estão em calculos.js */
 let lastCart = null;
 function renderCarteira() {
   const p = perfilCart(), pv = previsaoIbov(); store.set('af2.cart', p);
@@ -578,11 +595,11 @@ function renderCarteira() {
   // ações: melhores previsões, uma por setor, pesos por nota ÷ volatilidade
   const vAc = V * w.acoes;
   if (vAc > 0) {
-    const nMax = p.perfil === 'arrojado' ? 8 : 6, usados = new Set(), cands = [];
-    Object.values(U).filter(a => a.prev >= .1).sort((a, b) => b.prev - a.prev).forEach(a => { if (cands.length < nMax && !usados.has(a.setor)) { usados.add(a.setor); cands.push({ sym: a.sym, a, w: a.prev / Math.max(a.vol, .15) }); } });
+    const nMax = p.obj === 'trade' ? 5 : p.perfil === 'arrojado' ? 8 : 6;
+    const cands = candidatosRV(p.obj, nMax);
     if (cands.length < 3) cands.push({ sym: 'BOVA11', etf: true, w: cands.reduce((s, x) => s + x.w, 0) || 1 });
     const d = dimensionar(cands, vAc, p.cap * V);
-    d.linhas.forEach(x => linhas.push({ cl: 'acoes', nome: x.sym, emissor: x.etf ? 'ETF do Ibovespa' : x.a.setor, onde: p.plat === '*' ? 'qualquer corretora' : p.plat, v: x.v, ret: null, acao: x.a, cap: x.cap }));
+    d.linhas.forEach(x => linhas.push({ cl: 'acoes', nome: x.sym, emissor: x.etf ? 'ETF do Ibovespa' : x.a.setor, onde: p.plat === '*' ? 'qualquer corretora' : p.plat, v: x.v, ret: x.a && p.obj === 'dividendos' ? x.a.dy : null, retDy: p.obj === 'dividendos', acao: x.a, cap: x.cap, trade: x.stop ? x : null }));
     if (d.sobra > 1) { linhas.push({ cl: 'acoes', nome: 'BOVA11', emissor: 'ETF do Ibovespa', onde: p.plat === '*' ? 'qualquer corretora' : p.plat, v: d.sobra, ret: null, etf: true }); notas.push(`todas as ações bateram o teto de ${pct(p.cap, 0)}: ${brl(d.sobra)} foi para o ETF BOVA11`); }
   }
   // projeção
@@ -599,11 +616,11 @@ function renderCarteira() {
   $('#cResumo').textContent = `${linhas.length} posições · ${p.perfil}`;
   const corDe = k => css(CLASSES.find(c => c.k === k).cor);
   tabela($('#cTbl'), 'cart', [
-    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${corDe(l.cl)}" title="${CLASSES.find(c => c.k === l.cl).nome}"></i><b>${esc(l.nome)}</b> <span class="sub">${l.emissor ? esc(l.emissor) + ' · ' : ''}${l.acao ? '~' + Math.floor(l.v / l.acao.last) + ' ações' : l.prazo ? 'vence em ' + Math.round(l.prazo / 30) + 'm' : l.etf ? 'ETF' : 'resgate diário'}</span>`, v: l => CLASSES.findIndex(c => c.k === l.cl), asc: 1 },
+    { k: 'n', h: 'Onde aplicar', w: 1, f: l => `<i class="dot" style="background:${corDe(l.cl)}" title="${CLASSES.find(c => c.k === l.cl).nome}"></i><b>${esc(l.nome)}</b> <span class="sub">${l.emissor ? esc(l.emissor) + ' · ' : ''}${l.acao ? '~' + Math.floor(l.v / l.acao.last) + (l.acao.fii ? ' cotas' : ' ações') : l.prazo ? 'vence em ' + Math.round(l.prazo / 30) + 'm' : l.etf ? 'ETF' : 'resgate diário'}</span>${l.trade ? `<br><span class="sub num">entrada R$ ${nf(l.trade.entrada, 2)} · stop <span class="down">R$ ${nf(l.trade.stop, 2)}</span> · alvo <span class="up">R$ ${nf(l.trade.alvo, 2)}</span></span>` : ''}`, v: l => CLASSES.findIndex(c => c.k === l.cl), asc: 1 },
     { k: 'o', h: 'Plataforma', f: l => esc(l.onde), v: l => l.onde, asc: 1 },
     { k: 'p', h: '%', r: 1, f: l => `<b class="num">${pct(l.v / V, 1)}</b>`, v: l => l.v },
     { k: 'v', h: 'Valor', r: 1, f: l => `<span class="num">${brl(l.v)}</span>`, v: l => l.v },
-    { k: 'r', h: 'Ret. a.a.', r: 1, f: l => l.ret != null ? `<span class="num">${pct(l.ret)}</span>` : (l.acao ? pillNivel(l.acao.prev) : '<span class="pill warn">variável</span>'), v: l => l.ret ?? retAc }
+    { k: 'r', h: 'Ret. a.a.', r: 1, f: l => l.retDy ? `<span class="num">DY ${pct(l.ret, 1)}</span>` : l.ret != null ? `<span class="num">${pct(l.ret)}</span>` : (l.acao ? pillNivel(l.acao.prev) : '<span class="pill warn">variável</span>'), v: l => l.ret ?? retAc }
   ], linhas, { sort: { k: 'p', dir: -1 }, rerender: renderCarteira });
   // por quê
   const why = [];
@@ -612,7 +629,11 @@ function renderCarteira() {
   const rfBest = linhas.filter(l => l.cl === 'pos' || l.cl === 'trav').sort((a, b) => b.ret - a.ret)[0];
   if (rfBest) why.push(`Melhor renda fixa no seu prazo: <b>${rfBest.nome}</b> (${rfBest.onde}), ${pct(rfBest.ret)} líquido ao ano.`);
   const ac = linhas.filter(l => l.acao);
-  if (ac.length) why.push(`Ações escolhidas pela melhor previsão, uma por setor, com peso maior para quem tem nota alta e volatilidade baixa: ${ac.map(l => `<b>${l.nome}</b>`).join(', ')}. Teto de ${pct(p.cap, 0)} do total por ação; fatias abaixo de R$ 100 são descartadas.`);
+  if (ac.length) why.push({
+    dividendos: `Objetivo <b>dividendos</b>: ações e FIIs com maior dividend yield dos últimos 12 meses (entre 5% e 25%, sem tendência de queda forte), um por setor/segmento: ${ac.map(l => `<b>${l.nome}</b>${l.acao ? ` (DY ${pct(l.acao.dy, 1)})` : ''}`).join(', ')}. Renda estimada: <b>${brl(ac.reduce((s, l) => s + (l.acao ? l.v * l.acao.dy : 0), 0) / 12)}/mês</b>, isenta de IR para pessoa física (dividendos e rendimentos de FII).`,
+    trade: `Objetivo <b>trade</b>: ações com sinal técnico forte (Compra/Compra forte, IFR abaixo de 75): ${ac.map(l => `<b>${l.nome}</b>`).join(', ')}. Cada uma tem <b>stop</b> (saia se cair até ele) e <b>alvo</b> (realize o lucro), com risco/retorno de 2:1. Saia também se a previsão virar Venda. Trade tem IR de 15% sobre o lucro (20% em day trade) e exige acompanhar todo dia.`,
+    equilibrado: `Ações escolhidas pela melhor previsão, uma por setor, com peso maior para quem tem nota alta e volatilidade baixa: ${ac.map(l => `<b>${l.nome}</b>`).join(', ')}.`
+  }[p.obj] + ` Teto de ${pct(p.cap, 0)} do total por ação; fatias abaixo de R$ 100 são descartadas.`);
   why.push(`Retorno de ações assume CDI + 4 p.p. menos 15% de IR — é uma hipótese para a projeção, não uma previsão.`);
   why.push('Revise a carteira quando alguma classe se afastar mais de 5 pontos do alvo (rebalanceamento).');
   $('#cWhy').innerHTML = why.map(x => `<li>${x}</li>`).join('');
@@ -651,10 +672,12 @@ function renderSliders(w, on) {
 /* ================= ações ================= */
 let aSel = null;
 function renderAcoes() {
-  const q = $('#aBusca').value.trim().toUpperCase(), se = $('#aSetor').value, sn = $('#aSinal').value;
-  const rows = Object.values(U).filter(a => (!q || a.sym.includes(q)) && (!se || a.setor === se) && (sn === '' || nivel(a.prev).n === +sn));
-  $('#aCount').textContent = `${rows.length} de ${Object.keys(U).length} ações`;
-  if (!aSel || !U[aSel]) aSel = [...rows].sort((a, b) => b.prev - a.prev)[0]?.sym;
+  const q = $('#aBusca').value.trim().toUpperCase(), se = $('#aSetor').value, sn = $('#aSinal').value, fii = $('#aTipo').value === 'fii', SRC = fii ? UF : U;
+  const setores = [...new Set(Object.values(SRC).map(a => a.setor))].sort(), selS = $('#aSetor');
+  if (selS.dataset.tipo !== $('#aTipo').value) { selS.dataset.tipo = $('#aTipo').value; selS.innerHTML = `<option value="">${fii ? 'Todos os segmentos' : 'Todos os setores'}</option>` + setores.map(x => `<option>${esc(x)}</option>`).join(''); }
+  const rows = Object.values(SRC).filter(a => (!q || a.sym.includes(q)) && (!se || a.setor === se) && (sn === '' || nivel(a.prev).n === +sn));
+  $('#aCount').textContent = `${rows.length} de ${Object.keys(SRC).length} ${fii ? 'FIIs' : 'ações'}`;
+  if (!aSel || !SRC[aSel]) aSel = [...rows].sort((a, b) => b.prev - a.prev)[0]?.sym;
   tabela($('#aTbl'), 'acoes', [
     { k: 's', h: 'Ativo', f: a => `<b>${a.sym}</b>`, v: a => a.sym, asc: 1 },
     { k: 'se', h: 'Setor', f: a => `<span class="sub">${a.setor}</span>`, v: a => a.setor, asc: 1 },
@@ -663,6 +686,7 @@ function renderAcoes() {
     { k: 'r1', h: '1m', r: 1, f: a => `<span class="num ${cls(a.r1)}">${sgnPct(a.r1)}</span>`, v: a => a.r1 },
     { k: 'r3', h: '3m', r: 1, f: a => `<span class="num ${cls(a.r3)}">${sgnPct(a.r3)}</span>`, v: a => a.r3 },
     { k: 'r12', h: '12m', r: 1, f: a => `<span class="num ${cls(a.r12)}">${sgnPct(a.r12)}</span>`, v: a => a.r12 },
+    { k: 'dy', h: 'DY 12m', r: 1, f: a => a.dy ? `<span class="num">${pct(a.dy, 1)}</span>` : '', v: a => a.dy },
     { k: 'rsi', h: 'IFR', r: 1, f: a => `<span class="num">${a.rsi?.toFixed(0) ?? '—'}</span>`, v: a => a.rsi },
     { k: 'vol', h: 'Vol.', r: 1, f: a => `<span class="num">${pct(a.vol, 0)}</span>`, v: a => a.vol, asc: 1 },
     { k: 't', h: 'Técnico', f: a => pillNivel(a.tec), v: a => a.tec },
@@ -670,7 +694,7 @@ function renderAcoes() {
     { k: 'pv', h: 'Previsão 4 sem.', f: a => pillNivel(a.prev), v: a => a.prev },
     { k: 'bt', h: 'Acerto hist.', r: 1, f: a => a.bt ? `<span class="num ${a.bt.acc > a.bt.base + .03 ? 'up' : a.bt.acc < a.bt.base - .03 ? 'down' : ''}" title="sempre alta: ${pct(a.bt.base, 0)} · ${a.bt.n} sinais">${pct(a.bt.acc, 0)}</span> <span class="sub num">/${pct(a.bt.base, 0)}</span>` : '—', v: a => a.bt ? a.bt.acc - a.bt.base : null }
   ], rows, { sort: { k: 'pv', dir: -1 }, rerender: renderAcoes, rowCls: a => a.sym === aSel ? 'sel' : '', onRow: a => { aSel = a.sym; renderAcoes(); }, empty: D ? 'Nenhuma ação com esses filtros.' : 'Sem dados de ações (dados.js ausente).' });
-  const a = U[aSel]; if (!a) return;
+  const a = SRC[aSel]; if (!a) return;
   $('#aChTitle').textContent = `${a.sym} · ${a.nome || a.setor}`;
   const n = a.x.c.length, ini = Math.max(0, n - 252), sl = arr => arr.slice(ini);
   chart('chAcao', { type: 'line', data: { labels: sl(a.x.t).map(t => new Date(t * 1000).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })), datasets: [
@@ -707,7 +731,6 @@ function preencherSelects() {
   const fill = (el, vals) => { const cur = el.value; el.querySelectorAll('option:not(:first-child)').forEach(o => o.remove()); vals.forEach(v => el.insertAdjacentHTML('beforeend', `<option>${esc(v)}</option>`)); el.value = cur; };
   fill($('#nCat'), [...new Set(NEWS.map(n => n.categoria))]);
   fill($('#nTk'), [...new Set(NEWS.flatMap(n => n.tickers))].sort());
-  fill($('#aSetor'), SETORES.map(s => s.nome).sort());
   const cp = $('#cPlat'), cur = cp.value || store.get('af2.cart', {}).plat || '*';
   cp.innerHTML = '<option value="*">Todas (a melhor de cada)</option>' + plataformas().filter(p => p !== 'Tesouro Direto').map(p => `<option>${esc(p)}</option>`).join('');
   cp.value = [...cp.options].some(o => o.value === cur) ? cur : '*';
@@ -759,8 +782,8 @@ document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => goto(b.d
 ['#fValor', '#fPrazo', '#fIdx', '#fBusca', '#fIsento', '#fFgc', '#fLiq', '#fElig'].forEach(id => $(id).addEventListener('input', renderRF));
 ['#simValor', '#simPrazo'].forEach(id => $(id).addEventListener('input', renderSim));
 $('#simClose').onclick = () => { SIM.o = null; $('#simCard').hidden = true; renderRF(); };
-['#cValor', '#cPrazo', '#cPerfil', '#cPlat', '#cRes', '#cCap', '#cCustom'].forEach(id => $(id).addEventListener('input', renderCarteira));
-['#aBusca', '#aSetor', '#aSinal'].forEach(id => $(id).addEventListener('input', renderAcoes));
+['#cValor', '#cPrazo', '#cPerfil', '#cPlat', '#cRes', '#cCap', '#cCustom', '#cObj'].forEach(id => $(id).addEventListener('input', renderCarteira));
+['#aTipo', '#aBusca', '#aSetor', '#aSinal'].forEach(id => $(id).addEventListener('input', renderAcoes));
 ['#nBusca', '#nCat', '#nTk', '#nSent'].forEach(id => $(id).addEventListener('input', renderNoticias));
 $('#offAdd').onclick = () => { OFF.unshift({ plat: 'XP', tipo: 'LCA', emissor: '', idx: 'CDI', taxa: 90, prazo: 720, min: 1000, liq: false }); saveOff(); renderOffEditor(); };
 $('#offReset').onclick = () => { if (confirm('Descartar suas edições e voltar para o ofertas.js?')) { try { localStorage.removeItem('af2.offers'); } catch {} OFF = BASE_OFF(); renderOffEditor(); renderChips(); renderRF(); renderCarteira(); } };
@@ -775,7 +798,7 @@ $('#themeBtn').onclick = () => {
   const rf = store.get('af2.rf', null);
   if (rf) { $('#fValor').value = rf.valor; $('#fPrazo').value = rf.prazo || ''; $('#fIdx').value = rf.idx; $('#fIsento').checked = rf.isento; $('#fFgc').checked = rf.fgc; $('#fLiq').checked = rf.liq; $('#fElig').checked = rf.elig; }
   const cp = store.get('af2.cart', null);
-  if (cp) { $('#cValor').value = cp.valor; $('#cPrazo').value = cp.prazo; $('#cPerfil').value = cp.perfil; $('#cRes').value = Math.round(cp.res * 100); $('#cCap').value = Math.round(cp.cap * 100); $('#cCustom').checked = cp.custom; }
+  if (cp) { $('#cValor').value = cp.valor; $('#cPrazo').value = cp.prazo; $('#cPerfil').value = cp.perfil; $('#cRes').value = Math.round(cp.res * 100); $('#cCap').value = Math.round(cp.cap * 100); $('#cCustom').checked = cp.custom; if (cp.obj) $('#cObj').value = cp.obj; }
   const tab = location.hash.slice(1) || store.get('af2.tab', 'painel'); if (document.getElementById('tab-' + tab)) goto(tab);
   renderTudo();
   await loadMacro();

@@ -191,16 +191,18 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
           <h2>Sua carteira atual</h2>
           <p class="sub">Digite o que você tem ou importe um arquivo. Tudo é lido e guardado só neste navegador.</p>
           <label class="drop mt" id="eDrop">
-            <input type="file" id="eFile" accept=".csv,.txt,.xlsx,.xls,.pdf" hidden>
-            <b>Importar arquivo</b><br><span class="sub">Extrato de posição da B3 (Área do Investidor → Extratos → Posição, .xlsx), planilha/CSV da corretora ou PDF da declaração do Imposto de Renda (Bens e Direitos) / informe de rendimentos.</span>
+            <input type="file" id="eFile" accept=".csv,.txt,.xlsx,.xls,.pdf,.json" multiple hidden>
+            <b>Importar arquivos</b> <span class="sub">(pode escolher vários, de bancos diferentes)</span><br><span class="sub">Extrato de conta da XP (PDF), extrato de posição da B3 (Área do Investidor → Extratos → Posição, .xlsx), planilha/CSV de qualquer corretora, PDF da declaração do IR (Bens e Direitos) ou uma carteira salva (.json).</span>
           </label>
+          <div class="chips mt" id="eSrcs"></div>
           <p class="sub mt" id="eImpMsg"></p>
           <div class="form mt">
             <label class="f">Perfil<select id="ePerfil"><option value="conservador">Conservador</option><option value="moderado" selected>Moderado</option><option value="arrojado">Arrojado</option></select></label>
-            <label class="f">Prazo (meses)<input id="ePrazo" type="number" min="1" max="120" value="36"></label>
-            <label class="f">Vou aportar (R$)<input id="eAporte" type="number" min="0" step="500" value="5000"></label>
+            <label class="f">Objetivo nas ações<select id="eObj"><option value="equilibrado">Equilibrado (crescimento)</option><option value="dividendos">Dividendos (renda mensal)</option><option value="trade">Trade (curto prazo)</option></select></label>
+            <label class="f">Dinheiro de reserva (% a manter)<input id="eRes" type="number" min="0" max="100" value="15"></label>
+            <label class="f">Investir mais (R$)<input id="eAporte" type="number" min="0" step="500" value="5000"></label>
+            <label class="f">Prazo para o retorno (meses)<input id="ePrazo" type="number" min="1" max="120" value="36"></label>
             <label class="f">Plataforma do aporte<select id="ePlat"></select></label>
-            <label class="f">Reserva desejada (%)<input id="eRes" type="number" min="0" max="100" value="15"></label>
             <label class="f">Máx. por ação (%)<input id="eCap" type="number" min="1" max="50" value="8"></label>
           </div>
         </div>
@@ -213,14 +215,28 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
           <div class="scroll short mt"><table id="eClasses"></table></div>
         </div>
       </div>
+      <div class="card mt" id="eSnapCard" hidden>
+        <h2>Desde que você salvou</h2>
+        <p class="sub mt" id="eSnapTxt"></p>
+        <div class="scroll short mt"><table id="eSnap"></table></div>
+      </div>
       <div class="card mt">
-        <div class="row sp"><h2>Seus ativos</h2><div class="row"><button class="btn" id="eAdd">+ Adicionar ativo</button><button class="btn ghost" id="eClear">Limpar tudo</button></div></div>
-        <p class="sub">Valor atual de cada aplicação. Para ações, informe a quantidade e o valor é calculado pela cotação. Linhas importadas aparecem marcadas: confira antes de confiar no diagnóstico.</p>
+        <h2>Como está cada investimento</h2>
+        <p class="sub" id="eAvSub"></p>
+        <div class="scroll mt"><table id="eAv"></table></div>
+      </div>
+      <div class="grid g12 mt">
+        <div class="card"><h2>Renda passiva e custos</h2><div class="kv mt" id="eRendaKv"></div></div>
+        <div class="card" id="chRendaBox"><h2>Proventos recebidos por mês</h2><p class="sub">Dos extratos importados.</p><div class="chart sm"><canvas id="chRenda"></canvas></div></div>
+      </div>
+      <div class="card mt">
+        <div class="row sp"><h2>Seus ativos</h2><div class="row"><button class="btn" id="eAdd">+ Adicionar</button><button class="btn" id="eSave" title="Baixa a carteira e o retrato do mercado de hoje para reavaliar depois">Salvar carteira (JSON)</button><label class="btn" style="cursor:pointer">Abrir carteira salva<input type="file" id="eOpen" accept=".json" hidden></label><button class="btn ghost" id="eClear">Limpar tudo</button></div></div>
+        <p class="sub">Valor atual de cada aplicação. Para ações e FIIs, a quantidade basta: o valor sai da cotação. Linhas importadas aparecem marcadas; passe o mouse para ver o que falta.</p>
         <div class="scroll mt"><table id="eTbl"></table></div>
       </div>
       <div class="grid g2 mt">
         <div class="card"><h2>Pontos de atenção</h2><div class="scroll short mt"><table id="eFind"></table></div></div>
-        <div class="card"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="sub mt" id="eRebal"></p></div>
+        <div class="card"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="mt" id="eApProj" style="font-size:12.5px;line-height:1.6"></p><p class="sub mt" id="eRebal"></p></div>
       </div>
       <div class="card mt">
         <div class="row sp"><h2>Análise com IA (Claude)</h2><span class="pill acc">opcional</span></div>
@@ -244,7 +260,9 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
           <label class="f">Plataforma<select id="cPlat"></select></label>
           <label class="f">Reserva de liquidez (%)<input id="cRes" type="number" min="0" max="100" value="15"></label>
           <label class="f">Máx. por ação (% do total)<input id="cCap" type="number" min="1" max="50" value="8"></label>
+          <label class="f">Objetivo nas ações<select id="cObj"><option value="equilibrado">Equilibrado (crescimento)</option><option value="dividendos">Dividendos (renda mensal)</option><option value="trade">Trade (curto prazo)</option></select></label>
         </div>
+        <div class="row mt"><button class="btn" id="cSaveJson" title="Baixa a carteira montada para reavaliar depois">Salvar carteira (JSON)</button><button class="btn ghost" id="cToExist">Usar como minha carteira →</button></div>
         <div class="mt">
           <label class="ck"><input type="checkbox" id="cCustom"> Ajustar os percentuais à mão</label>
           <div id="cSliders" class="mt" style="display:grid;gap:6px"></div>
@@ -331,6 +349,7 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
     <div class="card">
       <div class="filters">
         <div class="row">
+          <select id="aTipo"><option value="acoes">Ações</option><option value="fii">FIIs</option></select>
           <input id="aBusca" placeholder="buscar ticker…" style="width:130px">
           <select id="aSetor"><option value="">Todos os setores</option></select>
           <select id="aSinal"><option value="">Qualquer previsão</option><option value="2">Compra forte</option><option value="1">Compra</option><option value="0">Neutro</option><option value="-1">Venda</option><option value="-2">Venda forte</option></select>
@@ -400,7 +419,175 @@ tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 </div>
 <script src="ofertas.js"></script>
 <script src="dados.js"></script>
+<script src="importadores.js"></script>
+<script src="calculos.js"></script>
 <script src="app.js"></script>
 <script src="carteira.js"></script>
+<!-- === Botao de volta ao portfolio - cole antes de </body> === -->
+<a id="mr-portfolio-btn" href="https://matheusmerlim1.github.io/" target="_blank" rel="noopener"
+   aria-label="Abrir o portf&oacute;lio de Matheus Raposo" title="Ver todos os meus projetos">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+       stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>
+  </svg>
+  <span>Portf&oacute;lio</span>
+</a>
+<style>
+#mr-portfolio-btn {
+  position: fixed; top: 12px; right: 12px; z-index: 2147483000;
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .42rem .8rem; border-radius: 999px;
+  font: 600 13px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #e8edf5; text-decoration: none; white-space: nowrap;
+  background: rgba(18,24,38,.92);
+  border: 1px solid rgba(88,166,255,.45);
+  box-shadow: 0 2px 12px rgba(0,0,0,.35);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  transition: transform .15s, border-color .15s, background .15s;
+}
+#mr-portfolio-btn:hover {
+  transform: translateY(-1px); color: #fff; text-decoration: none;
+  background: rgba(24,32,50,.96); border-color: #58a6ff;
+}
+#mr-portfolio-btn:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+@media (max-width: 520px) {
+  #mr-portfolio-btn { padding: .45rem; }
+  #mr-portfolio-btn span { display: none; }
+}
+@media print { #mr-portfolio-btn { display: none; } }
+</style>
+<script>
+/* Abre espaco para o botao em vez de cobrir o que ja existia no canto.
+   1) empurra para a esquerda o conteudo da barra que ocupa aquele espaco;
+   2) se ainda sobrar sobreposicao, desloca o proprio item. */
+(function () {
+  var btn = document.getElementById('mr-portfolio-btn');
+  if (!btn) return;
+
+  var desfazer = [];
+
+  function limpar() {
+    for (var i = 0; i < desfazer.length; i++) desfazer[i]();
+    desfazer = [];
+  }
+
+  function guardar(el, prop) {
+    var antes = el.style[prop];
+    desfazer.push(function () { el.style[prop] = antes; });
+  }
+
+  /* item discreto = nao ocupa quase toda a largura; e um controle, rotulo ou icone */
+  function ehItem(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    return el.getBoundingClientRect().width < innerWidth * 0.7;
+  }
+
+  /* sobe ate a barra que contem o item (algo largo o bastante para ter padding) */
+  function barra(el) {
+    for (var n = 0; el && n < 8; n++, el = el.parentElement) {
+      if (el === document.body || el === document.documentElement) return null;
+      if (el.getBoundingClientRect().width >= innerWidth * 0.6) return el;
+    }
+    return null;
+  }
+
+  function encosta(a, b) {
+    return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+  }
+
+  function varrer() {
+    var r = btn.getBoundingClientRect();
+    var y = Math.round(r.top + r.height / 2);
+    var achados = [];
+    btn.style.visibility = 'hidden';
+    for (var x = Math.floor(r.right); x > r.left - 10; x -= 8) {
+      if (x < 1 || x > innerWidth - 1) continue;
+      var sob = document.elementFromPoint(x, y);
+      if (ehItem(sob) && achados.indexOf(sob) < 0) achados.push(sob);
+    }
+    btn.style.visibility = '';
+    return achados;
+  }
+
+  function ajustar() {
+    limpar();
+    var r = btn.getBoundingClientRect();
+    if (!r.width) return;
+    var reserva = Math.ceil(r.width + 20);
+
+    /* 1) padding na barra: desloca o conteudo dela para a esquerda */
+    var barras = [];
+    varrer().forEach(function (item) {
+      var b = barra(item);
+      if (b && barras.indexOf(b) < 0) barras.push(b);
+    });
+    barras.forEach(function (b) {
+      if ((parseFloat(getComputedStyle(b).paddingRight) || 0) >= reserva) return;
+      guardar(b, 'paddingRight');
+      b.style.paddingRight = reserva + 'px';
+    });
+
+    /* 2) o que continuar embaixo do botao (tipicamente position:absolute,
+          que nao anda com padding) e deslocado individualmente */
+    r = btn.getBoundingClientRect();
+    varrer().forEach(function (item) {
+      if (!encosta(item.getBoundingClientRect(), r)) return;
+      var cs = getComputedStyle(item);
+      if (cs.position === 'absolute' || cs.position === 'fixed') {
+        var atual = parseFloat(cs.right);
+        guardar(item, 'right');
+        item.style.right = (isNaN(atual) ? reserva : atual + reserva) + 'px';
+      } else {
+        guardar(item, 'marginRight');
+        item.style.marginRight =
+          ((parseFloat(cs.marginRight) || 0) + reserva) + 'px';
+      }
+    });
+
+    /* 3) rede de seguranca: o que insistir em ficar embaixo do botao e
+          deslocado no proprio elemento. transform sempre move, seja qual
+          for o position, o display ou o container. */
+    for (var tent = 0; tent < 3; tent++) {
+      r = btn.getBoundingClientRect();
+      var teimosos = varrer().filter(function (item) {
+        return encosta(item.getBoundingClientRect(), r);
+      });
+      if (!teimosos.length) break;
+      teimosos.forEach(function (item) {
+        var caixa = item.getBoundingClientRect();
+        var passo = Math.ceil(caixa.right - r.left + 10);
+        if (passo <= 0) return;
+        guardar(item, 'transform');
+        item.style.transform = 'translateX(-' + passo + 'px)';
+      });
+    }
+
+    btn.setAttribute('data-mr-ok', '1');   /* marca que o ajuste ja rodou */
+  }
+
+  var pendente = 0;
+  function agendar() {
+    /* sem requestAnimationFrame de proposito: ele nao dispara quando a pagina
+       esta em aba oculta ou em iframe fora da tela, e as leituras de layout
+       abaixo ja forcam o recalculo sozinhas */
+    clearTimeout(pendente);
+    pendente = setTimeout(ajustar, 60);
+  }
+
+  agendar();
+  addEventListener('DOMContentLoaded', agendar);
+  addEventListener('load', agendar);
+  addEventListener('resize', agendar);
+
+  /* muita pagina monta o cabecalho por JS depois do load; refaz o calculo
+     quando o DOM mudar e em algumas passadas tardias, por seguranca */
+  if (window.MutationObserver) {
+    new MutationObserver(agendar).observe(document.documentElement,
+      { childList: true, subtree: true });
+  }
+  [400, 1200, 3000].forEach(function (t) { setTimeout(agendar, t); });
+})();
+</script>
+<!-- === fim do botao === -->
 </body>
 </html>

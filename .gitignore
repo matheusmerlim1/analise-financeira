@@ -1,3 +1,15 @@
 # gerado pelo GitHub Actions a cada publicação
 dados.js
 __pycache__/
+
+# extratos e documentos pessoais: nunca versionar
+*.pdf
+*.xlsx
+*.xls
+*.csv
+extrato*
+node_modules/
+.env
+*.env
+Thumbs.db
+.DS_Store

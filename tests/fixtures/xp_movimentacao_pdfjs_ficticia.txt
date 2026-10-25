@@ -1,0 +1,23 @@
+01 / 11 / 2026 10 : 00   XP INVESTIMENTOS CORRETORA DE CÂMBIO ,   TÍTULOS E VALORES MOBILIÁRIOS
+ S . A .   |   Extrato
+ Extrato da conta
+ FULANO DE TAL EXEMPLO   Conta :   0000000
+ De :   01 / 08 / 2026 Até :   31 / 10 / 2026
+ Saldo disponível :   R $   1 . 250 , 00   Informações detalhadas do saldo
+ Liq   Mov   Histórico   Valor   Saldo
+ 20 / 10 / 2026   20 / 10 / 2026   RENDIMENTOS DE CLIENTES HGLG11 S /   10   R $   11 , 00   R $   1 . 250 , 00
+ 09 / 10 / 2026   07 / 10 / 2026   FEE FIXO   -   Cobrança ref .   Set26   - R $   50 , 00   R $   1 . 239 , 00
+IRRF S / RESGATE FUNDOS   -   FUNDO EXEMPLO FIC de FIF RF CP
+ 07 / 10 / 2026   07 / 10 / 2026    - R $   10 , 00   R $   1 . 289 , 00
+RL
+ 05 / 10 / 2026   05 / 10 / 2026   JUROS S /   CAPITAL DE CLIENTES BBAS3 S /   5   R $   0 , 50   R $   1 . 299 , 50
+ 02 / 10 / 2026   02 / 10 / 2026   DIVIDENDOS DE CLIENTES BBAS3 S /   20   R $   8 , 00   R $   1 . 299 , 00
+CREDITO DE REEMBOLSO DE EVENTO
+ 01 / 10 / 2026   01 / 10 / 2026    R $   1 , 00   R $   1 . 291 , 00
+ BRPETRACNPR6
+ Liq   Mov   Histórico   Valor   Saldo
+Pgto Juros XP0000AAAA1   |   COE BANCO XP S . A .   -
+ 28 / 09 / 2026   28 / 09 / 2026    R $   50 , 00   R $   1 . 290 , 00
+JUN / 2028
+ 11 / 08 / 2026   11 / 08 / 2026   COMPRA CDB   |   CDB BANCO EXEMPLO   -   AGO / 2029   - R $   2 . 000 , 00   R $   1 . 240 , 00
+ Lançamentos futuros

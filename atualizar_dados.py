@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -40,6 +41,19 @@ SETORES = {
     "Consumo e alimentos": ["ABEV3", "MBRF3", "JBSS32"],
     "Agro e papel": ["SUZB3", "KLBN11", "SLCE3"],
     "Telecom e tecnologia": ["VIVT3", "TIMS3", "TOTS3"],
+    "Financeiro e seguros": ["B3SA3", "ITSA4", "BBSE3", "CXSE3", "PSSA3"],
+    "Shoppings e imóveis": ["ALOS3", "MULT3", "IGTI11"],
+    "Transporte e logística": ["RENT3", "MOTV3", "UGPA3", "VBBR3"],
+}
+# FIIs por segmento (inclui os mais negociados do IFIX; ajuste à vontade)
+FIIS = {
+    "Logística": ["HGLG11", "BTLG11", "XPLG11", "BRCO11", "LVBI11", "VILG11", "GGRC11", "XPIN11"],
+    "Shopping": ["XPML11", "VISC11", "HSML11", "HGBS11", "CPSH11"],
+    "Lajes corporativas": ["PVBI11", "RBRP11", "HGRE11", "JSRE11", "BRCR11"],
+    "Papel (recebíveis)": ["KNCR11", "KNIP11", "MXRF11", "CPTS11", "RBRR11", "MCCI11", "PCIP11", "XPCI11", "SNCI11", "RZAK11", "VGIR11", "KNSC11", "RECR11", "KNHY11", "VGHF11", "RBRX11"],
+    "Híbrido e renda urbana": ["KNRI11", "ALZR11", "HGRU11", "TRXF11"],
+    "Fundo de fundos": ["XPSF11", "HFOF11", "RBRF11"],
+    "Fiagro": ["SNAG11", "RZAG11", "BTRA11", "KNCA11", "CPTR11", "VGIA11"],
 }
 # ações que também recebem busca de notícias individual
 CARTEIRA_NOTICIAS = ["PETR4", "VALE3", "ITUB4", "MGLU3", "WEGE3", "BBAS3", "AXIA3", "BBDC4"]
@@ -131,7 +145,7 @@ def google_news(q, categoria):
 
 
 def yahoo(simbolo, faixa="6mo"):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(simbolo)}?range={faixa}&interval=1d"
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(simbolo)}?range={faixa}&interval=1d&events=div"
     r = json.loads(get(url))["chart"]["result"][0]
     q = r["indicators"]["quote"][0]
     serie = [(ts, c) for ts, c in zip(r["timestamp"], q["close"]) if c is not None]
@@ -144,6 +158,9 @@ def yahoo(simbolo, faixa="6mo"):
         "min52": m.get("fiftyTwoWeekLow"),
         "t": [ts for ts, _ in serie],
         "c": [round(c, 4 if c < 20 else 2) for _, c in serie],
+        # proventos pagos nos últimos 12 meses, para o dividend yield
+        "div12": round(sum(d.get("amount", 0) for d in (r.get("events", {}).get("dividends") or {}).values()
+                           if d.get("date", 0) > time.time() - 365 * 86400), 4),
     }
 
 
@@ -179,7 +196,7 @@ def ler_anterior():
 
 def main():
     log = []
-    dados = {"geradoEm": datetime.now(timezone.utc).isoformat(), "noticias": [], "indices": {}, "acoes": {}, "setores": SETORES, "erros": log}
+    dados = {"geradoEm": datetime.now(timezone.utc).isoformat(), "noticias": [], "indices": {}, "acoes": {}, "fiis": {}, "setores": SETORES, "segmentos_fii": FIIS, "erros": log}
 
     # tudo em paralelo: ~50 requisições levam poucos segundos em vez de ~1 minuto
     tarefas = {}
@@ -191,6 +208,9 @@ def main():
         tarefas[("feed", fonte, url)] = (ler_rss, url, fonte, cat)
     for q, cat in BUSCAS:
         tarefas[("busca", q, q)] = (google_news, q, cat)
+    for seg, ts in FIIS.items():
+        for t in ts:
+            tarefas[("fii", t, t)] = (yahoo, t + ".SA", "1y")
     for t in CARTEIRA_NOTICIAS:
         tarefas[("noticia", t, t)] = (google_news, t, "Ações")
 
@@ -209,12 +229,14 @@ def main():
                 dados["indices"][chave] = r
             elif tipo == "acao":
                 dados["acoes"][chave] = r
+            elif tipo == "fii":
+                dados["fiis"][chave] = r
             else:
                 if tipo == "noticia":
                     for n in r:
                         n["ticker"] = chave
                 brutas += r
-    print(f"  {len(dados['acoes'])} ações, {len(dados['indices'])} índices")
+    print(f"  {len(dados['acoes'])} ações, {len(dados['fiis'])} FIIs, {len(dados['indices'])} índices")
 
     vistos = set()
     for n in brutas:
@@ -233,9 +255,10 @@ def main():
 
     # fonte que falhou desta vez: mantém o valor da coleta anterior em vez de sumir do site
     anterior = ler_anterior()
-    for grupo in ("indices", "acoes"):
+    todos_fiis = {t for ts in FIIS.values() for t in ts}
+    for grupo in ("indices", "acoes", "fiis"):
         for k, v in anterior.get(grupo, {}).items():
-            if k not in dados[grupo] and (grupo == "indices" or k in TODOS_TICKERS):
+            if k not in dados[grupo] and (grupo == "indices" or k in TODOS_TICKERS or k in todos_fiis):
                 dados[grupo][k] = v
                 log.append(f"{k}: usando coleta anterior")
     if not dados["noticias"] and anterior.get("noticias"):

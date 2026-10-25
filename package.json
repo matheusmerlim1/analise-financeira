@@ -1,0 +1,12 @@
+{
+  "name": "analise-financeira",
+  "private": true,
+  "description": "Testes da lógica do site (leitura de extratos e cálculos).",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

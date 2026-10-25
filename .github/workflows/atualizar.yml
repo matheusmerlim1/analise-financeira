@@ -26,6 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # testes DEVEM passar para o deploy continuar
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Testes
+        run: npm ci && npm test
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -41,7 +49,7 @@ jobs:
       - name: Montar o site
         run: |
           mkdir _site
-          cp index.html app.js carteira.js ofertas.js dados.js _site/
+          cp index.html app.js carteira.js importadores.js calculos.js ofertas.js dados.js _site/
 
       - uses: actions/upload-pages-artifact@v3
         with:

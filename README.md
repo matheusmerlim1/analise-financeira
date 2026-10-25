@@ -7,7 +7,8 @@ Site que lê o mercado brasileiro e se atualiza sozinho: previsão de tendência
 | Aba | O que faz |
 |---|---|
 | **Painel** | Previsão do Ibovespa para 4 semanas (Venda forte → Compra forte) com os componentes e o acerto histórico, humor das notícias por dia, setores e ações com sinal mais forte. |
-| **Monte sua carteira** | Valor, prazo, perfil, plataforma, reserva e teto por ação → divisão em reserva, renda fixa pós, renda fixa travada e ações, com o ativo, a plataforma, o % e o valor de cada linha, mais a checagem de risco. Os percentuais podem ser ajustados à mão. |
+| **Monte sua carteira → Montar do zero** | Valor, prazo, perfil, plataforma, reserva, teto por ação e objetivo (equilibrado, dividendos ou trade com stop/alvo) → onde aplicar cada percentual, com checagem de risco. Salva em JSON. |
+| **Monte sua carteira → Analisar minha carteira** | Importa vários arquivos de bancos diferentes (extrato de conta da XP em PDF, extrato de posição da B3 em .xlsx, CSV de corretora, PDF do IR, carteira salva .json). Avalia cada investimento (indo bem, manter, abaixo do CDI, avaliar saída), dá nota à carteira contra o perfil, mostra renda passiva e custos, onde colocar um novo aporte e a projeção no prazo. A carteira salva em JSON pode ser reaberta depois para comparar com o mercado de hoje. Análise opcional com o Claude usando a chave do próprio usuário. |
 | **Buscador de renda fixa** | Filtra por valor, prazo, plataforma, produto, indexador, isenção, FGC e liquidez. Ordena por qualquer coluna (líquido a.a., taxa, prazo, mínimo…). Mostra a melhor oferta de cada plataforma. |
 | **Ações** | Tabela ordenável com retorno, IFR, volatilidade, sinal técnico, humor das notícias, previsão e acerto histórico. Clique numa ação para ver o gráfico e os votos dos indicadores. |
 | **Notícias** | Manchetes de 7 dias com filtros por tema, ação e tom, e a tendência que elas indicam. |
@@ -31,6 +32,18 @@ XP, BTG e as demais plataformas não publicam a prateleira em API aberta (exige 
 - **Acerto histórico**: o sinal técnico é recalculado em cada pregão dos últimos 2 anos e comparado com o retorno das 4 semanas seguintes, ao lado da referência "sempre alta".
 - **Carteira**: método das skills trader-budget (teto por ativo com redistribuição, descarte de fatias abaixo de R$ 100, arredondamento), trader-risk (FGC por emissor, teto, prazo, mínimo, reserva) e trader-rebalance (revisar quando uma classe desviar mais de 5 pontos).
 - **Renda fixa**: IR regressivo, isenção de LCI/LCA/CRA/CRI/debênture incentivada, custódia do Tesouro, carência mínima de LCI (12 m) e LCA (9 m), CDI e IPCA futuros pela curva do Focus.
+
+## Privacidade
+
+Extratos e carteiras são lidos **só no navegador** e guardados no `localStorage`; nada vai para servidor. O `.gitignore` bloqueia `*.pdf`, `*.xlsx`, `*.csv` e `extrato*` para que documentos pessoais nunca entrem no repositório. Os testes usam extratos fictícios.
+
+## Testes
+
+```bash
+npm install
+npm test        # Jest: leitura de extratos (XP, B3, IR) e cálculos (IR, dimensionamento, aporte)
+```
+O GitHub Actions roda os testes antes de cada publicação; se algum falhar, o site não é atualizado.
 
 ## Rodar localmente
 
