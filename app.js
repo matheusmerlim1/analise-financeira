@@ -358,7 +358,7 @@ function renderStrip(pv) {
   // patrimônio do usuário (carteira.js), quando já há investimentos cadastrados
   const pat = typeof patrimonioAtual === 'function' ? patrimonioAtual() : null;
   if (pat?.total) t.unshift(['Seu patrimônio', brl(pat.total), `${pat.n} itens${pat.semValor ? ` · ${pat.semValor} sem valor` : ''}`, 'carteira']);
-  $('#strip').innerHTML = t.map(([l, v, d, ir]) => `<div class="tile"${ir ? ` data-ir="${ir}" style="cursor:pointer;border-color:var(--accent)" title="abrir minha carteira"` : ''}><div class="l">${l}</div><div class="v num">${v}</div><div class="d">${d}</div></div>`).join('');
+  $('#strip').innerHTML = t.map(([l, v, d, ir]) => `<div class="tile"${ir ? ` data-ir="${ir}" style="cursor:pointer;border-color:var(--accent)" title="abrir minha carteira"` : ''}><div class="l">${l}</div><div class="v${/\d/.test(v) ? ' num' : ''}" title="${String(v).replace(/<[^>]*>/g, '')}">${v}</div><div class="d">${d}</div></div>`).join('');
   $('#strip').querySelectorAll('[data-ir]').forEach(el => el.onclick = () => { goto(el.dataset.ir); if (typeof modo === 'function') modo('exist'); });
   const st = $('#status');
   st.className = 'status ' + (M.ok && D ? 'ok' : 'err');
