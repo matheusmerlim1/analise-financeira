@@ -286,6 +286,7 @@ function renderExist() {
   $('#eVerdict').textContent = vd.l; $('#eVerdict').className = 'verdict ' + vd.c;
   $('#eScore').textContent = d.score == null ? 'adicione ou importe seus investimentos' : `nota ${d.score}/100`;
   document.querySelectorAll('#eMeter span').forEach((el, i) => el.classList.toggle('on', d.score != null && i === Math.min(4, Math.floor(d.score / 20))));
+  $('#eMeter').setAttribute('aria-label', d.score != null ? `Escala da nota da carteira: faixa ${Math.min(4, Math.floor(d.score / 20)) + 1} de 5` : 'Escala da nota da carteira: sem nota');
   $('#eVerdictSub').textContent = d.score == null ? '' : `${d.F.filter(f => f.sev === 'alta').length} pontos importantes, ${d.F.filter(f => f.sev === 'média').length} médios. Alvo do perfil ${p.perfil}, reserva de ${pct(p.res, 0)}.`;
   chart('chExist', { type: 'bar', data: { labels: CL_EXT.map(c => c.nome.split(' (')[0]), datasets: [
     { label: 'Hoje', data: CL_EXT.map(c => +(d.atual[c.k] / T * 100).toFixed(1)), backgroundColor: CL_EXT.map(c => css(c.cor)), borderRadius: 3 },
@@ -295,7 +296,7 @@ function renderExist() {
     { k: 'c', h: 'Classe', f: r => `<i class="dot" style="background:${css(r.cor)}"></i>${r.nome.split(' (')[0]}` },
     { k: 'a', h: 'Hoje', r: 1, f: r => `<span class="num">${pct(d.atual[r.k] / T, 0)}</span> <span class="sub num">${brl(d.atual[r.k])}</span>` },
     { k: 't', h: `Alvo (${p.perfil})`, r: 1, f: r => `<span class="num">${pct(d.alvo[r.k] ?? 0, 0)}</span> <span class="sub num">${brl((d.alvo[r.k] ?? 0) * d.total)}</span>` },
-    { k: 's', h: '', f: r => { const x = d.atual[r.k] / T - (d.alvo[r.k] ?? 0); return !d.total ? '' : Math.abs(x) <= .05 ? '<span class="pill up">ok</span>' : `<span class="pill ${Math.abs(x) > .15 ? 'down' : 'warn'}">${x > 0 ? 'reduzir' : 'aumentar'} ${pct(Math.abs(x), 0)}</span>`; } }
+    { k: 's', h: '', sr: 'Ajuste', f: r => { const x = d.atual[r.k] / T - (d.alvo[r.k] ?? 0); return !d.total ? '' : Math.abs(x) <= .05 ? '<span class="pill up">ok</span>' : `<span class="pill ${Math.abs(x) > .15 ? 'down' : 'warn'}">${x > 0 ? 'reduzir' : 'aumentar'} ${pct(Math.abs(x), 0)}</span>`; } }
   ], CL_EXT.filter(c => c.k !== 'outros' || d.atual.outros), { rerender: renderExist });
   registrarHistorico(d);
   renderAlerta(d); renderPatrimonio(d); renderLinhaTempo(d); renderEvolucao(d); renderAvaliacao(d); renderRenda(d); renderSnap(d);
@@ -322,21 +323,21 @@ function renderExist() {
     ap.unica ? `🏆 Opção única que mais rende: <b>${ap.unica.o.tipo} ${fmtTaxa(ap.unica.o)}</b> (${ap.unica.o.plat}) → <b class="up">${brl(ap.unica.a.final)}</b> no vencimento (${pct(ap.unica.a.liqAA)} líquido a.a.${ap.unica.a.ir ? '' : ', isento de IR'}${FGC.has(ap.unica.o.tipo) ? ', com FGC' : ap.unica.o.tipo.startsWith('Tesouro') ? ', Tesouro' : ''}).` : 'Nenhuma oferta de renda fixa cabe nesse valor e prazo.',
     ap.linhas.length ? `⚖️ Para equilibrar a carteira (perfil ${p.perfil}): ${ap.linhas.slice().sort((a, b) => b.v - a.v).slice(0, 3).map(l => `<b>${l.nome.replace(/<[^>]+>/g, '').split('  ')[0]}</b> ${brl(l.v)}`).join(' · ')}${ap.linhas.length > 3 ? ` e mais ${ap.linhas.length - 3}` : ''} → <b>~${brl(ap.final)}</b> no prazo.` : '',
     ap.div ? `💰 Para renda mensal: <b>${ap.div.sym}</b> (DY ${pct(ap.div.a.dy, 1)}) ≈ ${brl(p.aporte * ap.div.a.dy / 12)}/mês isento.` : '',
-    `<a href="#" id="eApVer" style="color:var(--accent);font-weight:600">ver o plano completo ↓</a>`
+    `<a href="#" id="eApVer" style="color:var(--accent);font-weight:600;display:inline-block;padding:4px 0">ver o plano completo ↓</a>`
   ].filter(Boolean).join('<br>');
-  const ver = $('#eApVer'); if (ver) ver.onclick = e => { e.preventDefault(); $('#eApCard').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  const ver = $('#eApVer'); if (ver) ver.onclick = e => { e.preventDefault(); $('#eApCard').scrollIntoView({ behavior: SUAVE, block: 'center' }); };
   const acima = CLASSES.filter(c => d.total && d.atual[c.k] / T - d.alvo[c.k] > .05);
   $('#eRebal').innerHTML = acima.length ? `Para alinhar sem aporte, seria preciso reduzir ${acima.map(c => `<b>${c.nome.split(' (')[0].toLowerCase()}</b> (${brl(d.atual[c.k] - d.alvo[c.k] * T)})`).join(' e ')}. Antes de vender, veja o imposto: vendas de ações até R$ 20 mil no mês são isentas; FIIs, ETFs e renda fixa resgatada antes do vencimento pagam IR.` : '';
   renderStrip(d.pv);  // atualiza o "Seu patrimônio" da faixa de indicadores
 }
 /* leva a pessoa até o que precisa de ajuste: as linhas dos itens na tabela de avaliação, ou a seção indicada */
 function irPara(alvo) {
-  if (alvo.sec) { const el = $(alvo.sec); el?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); piscar(el?.closest('.card')); return; }
+  if (alvo.sec) { const el = $(alvo.sec); el?.closest('.card')?.scrollIntoView({ behavior: SUAVE, block: 'center' }); piscar(el?.closest('.card')); return; }
   const idx = new Set(alvo.itens.map(h => HOLD.indexOf(h)).filter(i => i >= 0));
   SORT.eAv = { k: 've', dir: 1 }; renderAvaliacao(EXIST);   // problemas primeiro
   const linhas = [...$('#eAv').querySelectorAll('tbody tr')].filter(tr => { const inp = tr.querySelector('[data-av-valor]'); return inp && idx.has(+inp.dataset.avValor); });
   if (!linhas.length) return;
-  linhas[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  linhas[0].scrollIntoView({ behavior: SUAVE, block: 'center' });
   linhas.forEach(piscar);
   setTimeout(() => linhas[0].querySelector('[data-av-valor]')?.focus(), 450);
 }
@@ -477,7 +478,7 @@ function renderEvolucao(d) {
   if (EVO.cdi) bench.push({ nome: 'CDI', s: E.cdiIdx.map(c => base0 * c / E.cdiIdx[0]), cor: css('--ink-3'), tracejado: true });
   if (EVO.ibov) { const b = E.ibov.find(v => v != null); bench.push({ nome: 'Ibovespa', s: E.ibov.map(c => c == null ? null : base0 * c / b), cor: css('--warn'), tracejado: true }); }
   const todas = [...series, ...bench];
-  $('#evoSeries').innerHTML = todas.map(x => `<button class="chip ${EVO.off.includes(x.nome) ? '' : 'on'}" data-s="${esc(x.nome)}" style="${EVO.off.includes(x.nome) ? '' : `border-color:${x.cor};color:${x.cor}`}"><i class="dot" style="background:${x.cor}"></i>${esc(x.nome)}</button>`).join('');
+  $('#evoSeries').innerHTML = todas.map(x => `<button class="chip ${EVO.off.includes(x.nome) ? '' : 'on'}" data-s="${esc(x.nome)}" style="${EVO.off.includes(x.nome) ? '' : `border-color:${x.cor}`}"><i class="dot" style="background:${x.cor}"></i>${esc(x.nome)}</button>`).join('');
   $('#evoSeries').querySelectorAll('[data-s]').forEach(b => b.onclick = () => { const k = b.dataset.s; EVO.off = EVO.off.includes(k) ? EVO.off.filter(x => x !== k) : [...EVO.off, k]; salvarEvo(); renderEvolucao(EXIST); });
   const ds = todas.filter(x => !EVO.off.includes(x.nome)).map(x => ({
     label: x.nome, data: conv(x.s).map((y, i) => ({ x: E.eixo[i], y })), borderColor: x.cor, backgroundColor: x.cor,
@@ -544,7 +545,7 @@ function renderAvaliacao(d) {
     { k: 'pv', h: 'Previsão', f: x => x.a ? pillNivel(x.a.prev) : '', v: x => x.a?.prev ?? -9 },
     { k: 've', h: 'Avaliação', f: x => `<span class="pill ${x.av.c}" title="${esc(x.av.m)}">${x.av.v}</span>`, v: x => x.av.ord, asc: 1 },
     { k: 'm', h: 'Por quê', w: 1, cls: 'so-desk', f: x => `<span class="sub">${esc(x.av.m)}</span>` },
-    { k: 'x', h: '', f: x => `<button class="btn ghost" data-av-del="${HOLD.indexOf(x.h)}" title="apagar este investimento (não volta ao reimportar)">✕</button>` }
+    { k: 'x', h: '', sr: 'Apagar', f: x => `<button class="btn ghost" data-av-del="${HOLD.indexOf(x.h)}" title="apagar este investimento (não volta ao reimportar)" aria-label="Apagar ${esc(x.h.ativo || x.h.tipo)}"><span aria-hidden="true">✕</span></button>` }
   ], linhas, { sort: { k: 'tot', dir: -1 }, rerender: () => renderAvaliacao(d), rowCls: x => top.has(x) ? 'best' : '', empty: 'Adicione ou importe seus investimentos.' });
   $('#eAv').querySelectorAll('[data-av-valor]').forEach(el => el.onchange = () => ajustarValor(HOLD[+el.dataset.avValor], el.value));
   $('#eAv').querySelectorAll('[data-av-del]').forEach(b => b.onclick = () => apagarItem(HOLD[+b.dataset.avDel]));
@@ -593,18 +594,18 @@ function renderSnap(d) {
 }
 function renderFontes() {
   const srcs = [...new Set([...HOLD.map(h => h.src).filter(Boolean), ...Object.keys(EXTRATOS)])];
-  $('#eSrcs').innerHTML = srcs.map(s => `<span class="chip on" title="${esc(s)}">${esc(s.length > 32 ? s.slice(0, 30) + '…' : s)} · ${HOLD.filter(h => h.src === s).length || (EXTRATOS[s]?.tipo === 'irpf' ? 'histórico' : 0)} <button class="btn ghost" data-rmsrc="${esc(s)}" title="remover este arquivo" style="padding:0 2px">✕</button></span>`).join('');
+  $('#eSrcs').innerHTML = srcs.map(s => `<span class="chip on" title="${esc(s)}">${esc(s.length > 32 ? s.slice(0, 30) + '…' : s)} · ${HOLD.filter(h => h.src === s).length || (EXTRATOS[s]?.tipo === 'irpf' ? 'histórico' : 0)} <button class="btn ghost" data-rmsrc="${esc(s)}" title="remover este arquivo" aria-label="Remover o arquivo ${esc(s)}" style="padding:0 2px"><span aria-hidden="true">✕</span></button></span>`).join('');
   $('#eSrcs').querySelectorAll('[data-rmsrc]').forEach(b => b.onclick = () => { HOLD = HOLD.filter(h => h.src !== b.dataset.rmsrc); delete EXTRATOS[b.dataset.rmsrc]; salvarHold(); renderExist(); });
 }
 function renderHoldTbl(d) {
   const sel = (h, k, opts) => `<select data-k="${k}">${opts.map(x => `<option${x === (h[k] || '') ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
   const tot = d.total || 1;
-  $('#eTbl').innerHTML = `<thead><tr><th>Tipo</th><th>Ativo / produto</th><th>Instituição</th><th>Indexador</th><th class="r">Taxa</th><th>Vencimento</th><th class="r">Qtd.</th><th class="r">Valor atual (R$)</th><th class="r">%</th><th>Origem</th><th></th></tr></thead><tbody>${HOLD.map((h, i) => { const a = ativoDe(tickerDe(h)), calc = h.qtd > 0 && a; return `<tr data-i="${i}" class="${h.imp ? 'imp' : ''}" title="${esc(h.nota || '')}">
+  $('#eTbl').innerHTML = `<thead><tr><th>Tipo</th><th>Ativo / produto</th><th>Instituição</th><th>Indexador</th><th class="r">Taxa</th><th>Vencimento</th><th class="r">Qtd.</th><th class="r">Valor atual (R$)</th><th class="r">%</th><th>Origem</th><th><span class="vh">Apagar</span></th></tr></thead><tbody>${HOLD.map((h, i) => { const a = ativoDe(tickerDe(h)), calc = h.qtd > 0 && a; return `<tr data-i="${i}" class="${h.imp ? 'imp' : ''}" title="${esc(h.nota || '')}">
     <td>${sel(h, 'tipo', TIPOS_ATIVO)}</td><td><input data-k="ativo" value="${esc(h.ativo)}" placeholder="ex.: PETR4, CDB Banco X"></td><td><input data-k="inst" value="${esc(h.inst)}" placeholder="banco/corretora"></td>
     <td>${sel(h, 'idx', ['', 'CDI', 'Pré', 'IPCA'])}</td><td class="r"><input class="n num" data-k="taxa" type="number" step="0.1" value="${h.taxa ?? ''}" placeholder="—"></td>
     <td><input data-k="venc" type="date" value="${esc(h.venc)}" style="width:128px"></td><td class="r"><input class="n num" data-k="qtd" type="number" step="1" value="${h.qtd ?? ''}" placeholder="—"></td>
     <td class="r"><input class="n num" data-k="valor" type="number" step="100" value="${calc ? Math.round(valorDe(h)) : h.valor ?? ''}" style="width:100px" ${calc ? 'disabled title="calculado: quantidade × cotação"' : ''} placeholder="${h.nota ? 'informe' : '—'}"></td>
-    <td class="r num">${pct(valorDe(h) / tot, 1)}</td><td class="sub" style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${esc(h.src || (h.planejado ? 'planejado' : 'manual'))}</td><td><button class="btn ghost" data-del="${i}">✕</button></td></tr>`; }).join('') || '<tr><td colspan="11" class="sub">Nenhum investimento ainda. Importe seus extratos ou clique em "+ Adicionar".</td></tr>'}</tbody>`;
+    <td class="r num">${pct(valorDe(h) / tot, 1)}</td><td class="sub" style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${esc(h.src || (h.planejado ? 'planejado' : 'manual'))}</td><td><button class="btn ghost" data-del="${i}" aria-label="Apagar ${esc(h.ativo || h.tipo || 'este investimento')}"><span aria-hidden="true">✕</span></button></td></tr>`; }).join('') || '<tr><td colspan="11" class="sub">Nenhum investimento ainda. Importe seus extratos ou clique em "+ Adicionar".</td></tr>'}</tbody>`;
   $('#eTbl').querySelectorAll('[data-k]').forEach(el => el.addEventListener('change', () => {
     const h = HOLD[+el.closest('tr').dataset.i], k = el.dataset.k;
     if (k === 'valor') return ajustarValor(h, el.value);

@@ -12,6 +12,8 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const clip = (v, a = -1, b = 1) => Math.max(a, Math.min(b, v));
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const cls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
+// rolagens suaves só para quem não pediu menos movimento ao sistema
+const SUAVE = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
@@ -322,14 +324,24 @@ function tabela(el, id, cols, rows, opt = {}) {
   const col = st && cols.find(c => c.k === st.k);
   const data = col ? [...rows].sort((a, b) => { const x = col.v(a), y = col.v(b); return ((x ?? -Infinity) > (y ?? -Infinity) ? 1 : (x ?? -Infinity) < (y ?? -Infinity) ? -1 : 0) * st.dir; }) : rows;
   // c.cls: classe extra da coluna (ex.: "so-desk" esconde a coluna no celular)
-  el.innerHTML = `<thead><tr>${cols.map(c => `<th class="${c.v ? 's' : ''} ${c.r ? 'r' : ''} ${st?.k === c.k ? 'on' : ''} ${c.cls || ''}" data-k="${c.k}">${c.h}${c.v ? `<span class="ar">${st?.k === c.k ? (st.dir > 0 ? '▲' : '▼') : '↕'}</span>` : ''}</th>`).join('')}</tr></thead>
+  // foco dentro da tabela antes de redesenhar: volta para o mesmo cabeçalho/linha depois
+  const fo = el.contains(document.activeElement) ? (document.activeElement.closest('th[data-k]') ? 'th[data-k="' + document.activeElement.closest('th').dataset.k + '"] button' : document.activeElement.matches('tr[data-i]') ? 'tr[data-i="' + document.activeElement.dataset.i + '"]' : null) : null;
+  // cabeçalho sem texto (coluna de selo ou botão) leva um nome só para leitor de tela: c.sr
+  const cab = c => c.h || `<span class="vh">${c.sr || 'Detalhe'}</span>`;
+  el.innerHTML = `<thead><tr>${cols.map(c => `<th class="${c.v ? 's' : ''} ${c.r ? 'r' : ''} ${st?.k === c.k ? 'on' : ''} ${c.cls || ''}" data-k="${c.k}"${c.v ? ` aria-sort="${st?.k === c.k ? (st.dir > 0 ? 'ascending' : 'descending') : 'none'}"` : ''}>${c.v ? `<button type="button">${c.h}<span class="ar" aria-hidden="true">${st?.k === c.k ? (st.dir > 0 ? '▲' : '▼') : '↕'}</span></button>` : cab(c)}</th>`).join('')}</tr></thead>
     <tbody>${data.map((r, i) => `<tr data-i="${rows.indexOf(r)}" class="${opt.rowCls ? opt.rowCls(r, i) : ''}">${cols.map(c => `<td class="${c.r ? 'r' : ''} ${c.w ? 'w' : ''} ${c.cls || ''}">${c.f(r)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="sub">${opt.empty || 'Nada encontrado.'}</td></tr>`}</tbody>`;
   el.querySelectorAll('th.s').forEach(th => th.onclick = () => {
     const k = th.dataset.k, cur = SORT[id] || opt.sort;
     SORT[id] = { k, dir: cur?.k === k ? -cur.dir : (cols.find(c => c.k === k).asc ? 1 : -1) };
     store.set('af2.sort', SORT); opt.rerender();
   });
-  if (opt.onRow) el.querySelectorAll('tbody tr[data-i]').forEach(tr => tr.onclick = e => { if (!e.target.closest('a,button,input,select')) opt.onRow(rows[+tr.dataset.i]); });
+  if (opt.onRow) el.querySelectorAll('tbody tr[data-i]').forEach(tr => {
+    tr.onclick = e => { if (!e.target.closest('a,button,input,select')) opt.onRow(rows[+tr.dataset.i]); };
+    // linha clicável também abre com Enter/Espaço (WCAG 2.1.1)
+    tr.tabIndex = 0;
+    tr.onkeydown = e => { if (e.target === tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); opt.onRow(rows[+tr.dataset.i]); } };
+  });
+  if (fo) el.querySelector(fo)?.focus({ preventScroll: true });
 }
 
 /* ================= gráficos ================= */
@@ -338,7 +350,31 @@ const axis = () => ({ grid: { color: css('--line') }, border: { display: false }
 const base = () => ({ responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false } });
 const legend = () => ({ labels: { color: css('--ink-2'), boxWidth: 9, font: { size: 11 } } });
 const tScale = () => ({ ...axis(), type: 'linear', ticks: { ...axis().ticks, maxTicksLimit: 6, callback: v => new Date(v).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }) } });
-function chart(id, cfg) { CH[id]?.destroy(); const el = document.getElementById(id); if (el) CH[id] = new Chart(el, cfg); }
+function chart(id, cfg) {
+  CH[id]?.destroy(); const el = document.getElementById(id); if (!el) return;
+  CH[id] = new Chart(el, cfg);
+  // canvas não tem texto: o leitor de tela recebe um resumo dos dados (WCAG 1.1.1)
+  el.setAttribute('role', 'img'); el.setAttribute('aria-label', resumoGrafico(el, cfg));
+}
+function resumoGrafico(el, cfg) {
+  const tit = el.closest('.card')?.querySelector('h2')?.textContent.trim() || 'Gráfico';
+  const { type, data } = cfg, lbl = data.labels || [];
+  const fx = x => typeof x === 'number' && x > 1e11 ? new Date(x).toLocaleDateString('pt-BR') : String(x ?? '');
+  const fv = v => nf(v, Math.abs(v) < 100 ? 2 : 0);
+  if (type === 'doughnut' || type === 'pie') {
+    const d = data.datasets[0]?.data || [], t = d.reduce((a, v) => a + (+v || 0), 0) || 1;
+    return `${tit}, gráfico de rosca: ${lbl.map((l, i) => `${l} ${pct(d[i] / t, 0)}`).join(', ') || 'sem dados'}.`;
+  }
+  const partes = data.datasets.filter(ds => !ds.hidden).map(ds => {
+    const p = (ds.data || []).map((v, i) => v && typeof v === 'object' ? { x: v.x, y: v.y } : { x: lbl[i], y: v }).filter(q => typeof q.y === 'number' && isFinite(q.y));
+    if (!p.length) return null;
+    const nome = ds.label || 'valores';
+    if (p.length <= 12) return `${nome}: ${p.map(q => `${fx(q.x)} ${fv(q.y)}`).join(', ')}`;
+    const ys = p.map(q => q.y), a = p[0], b = p.at(-1);
+    return `${nome}: de ${fv(a.y)} em ${fx(a.x)} a ${fv(b.y)} em ${fx(b.x)}, mínimo ${fv(Math.min(...ys))}, máximo ${fv(Math.max(...ys))}`;
+  }).filter(Boolean);
+  return `${tit}, gráfico. ${partes.join('; ') || 'Sem dados'}.`;
+}
 
 /* ================= faixa de indicadores ================= */
 function renderStrip(pv) {
@@ -358,8 +394,11 @@ function renderStrip(pv) {
   // patrimônio do usuário (carteira.js), quando já há investimentos cadastrados
   const pat = typeof patrimonioAtual === 'function' ? patrimonioAtual() : null;
   if (pat?.total) t.unshift(['Seu patrimônio', brl(pat.total), `${pat.n} itens${pat.semValor ? ` · ${pat.semValor} sem valor` : ''}`, 'carteira']);
-  $('#strip').innerHTML = t.map(([l, v, d, ir]) => `<div class="tile"${ir ? ` data-ir="${ir}" style="cursor:pointer;border-color:var(--accent)" title="abrir minha carteira"` : ''}><div class="l">${l}</div><div class="v${/\d/.test(v) ? ' num' : ''}" title="${String(v).replace(/<[^>]*>/g, '')}">${v}</div><div class="d">${d}</div></div>`).join('');
-  $('#strip').querySelectorAll('[data-ir]').forEach(el => el.onclick = () => { goto(el.dataset.ir); if (typeof modo === 'function') modo('exist'); });
+  $('#strip').innerHTML = t.map(([l, v, d, ir]) => `<div class="tile"${ir ? ` data-ir="${ir}" role="button" tabindex="0" style="cursor:pointer;border-color:var(--accent)" title="abrir minha carteira"` : ''}><div class="l">${l}</div><div class="v${/\d/.test(v) ? ' num' : ''}" title="${String(v).replace(/<[^>]*>/g, '')}">${v}</div><div class="d">${d}</div></div>`).join('');
+  $('#strip').querySelectorAll('[data-ir]').forEach(el => {
+    el.onclick = () => { goto(el.dataset.ir); if (typeof modo === 'function') modo('exist'); };
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } };
+  });
   const st = $('#status');
   st.className = 'status ' + (M.ok && D ? 'ok' : 'err');
   st.innerHTML = `<i></i>${M.ok ? 'BCB ao vivo' : 'BCB indisponível (valores de 25/10/2026)'} · ${D ? 'mercado ' + tempoRel(D.geradoEm) : 'sem dados.js'}`;
@@ -369,6 +408,7 @@ function renderStrip(pv) {
 function renderPainel(pv) {
   const s = pv.score, nv = nivel(s);
   document.querySelectorAll('#ibMeter span').forEach((el, i) => el.classList.toggle('on', i === nv.n + 2));
+  $('#ibMeter').setAttribute('aria-label', `Escala de Venda forte a Compra forte: marcado ${nv.l}`);
   $('#ibVerdict').textContent = nv.l; $('#ibVerdict').className = 'verdict ' + cls(nv.n);
   $('#ibScore').textContent = `nota ${s > 0 ? '+' : ''}${s.toFixed(2).replace('.', ',')}`;
   $('#ibBack').innerHTML = IB?.bt ? `No histórico de 2 anos, o sinal técnico do Ibovespa acertou a direção das 4 semanas seguintes em <b>${pct(IB.bt.acc, 0)}</b> das ${IB.bt.n} vezes (apostar sempre em alta: ${pct(IB.bt.base, 0)}). ${IB.bt.acc < IB.bt.base ? 'Sozinho, o técnico não superou essa referência: use a previsão como leitura do momento, não como aposta.' : 'O sinal superou a referência no período.'}` : 'Sem histórico suficiente.';
@@ -395,12 +435,12 @@ function renderPainel(pv) {
   $('#pNews').innerHTML = newsItems(NEWS.slice(0, 25));
 }
 function newsChart(id, dias) {
-  chart(id, { type: 'bar', data: { labels: dias.map(x => x.d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })), datasets: [{ data: dias.map(x => x.h ? +x.h.m.toFixed(2) : 0), backgroundColor: dias.map(x => !x.h ? css('--line') : x.h.m >= 0 ? css('--up') : css('--down')), borderRadius: 3 }] },
+  chart(id, { type: 'bar', data: { labels: dias.map(x => x.d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit' })), datasets: [{ label: 'Tom médio das manchetes', data: dias.map(x => x.h ? +x.h.m.toFixed(2) : 0), backgroundColor: dias.map(x => !x.h ? css('--line') : x.h.m >= 0 ? css('--up') : css('--down')), borderRadius: 3 }] },
     options: { ...base(), plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => { const h = dias[c.dataIndex].h; return h ? ` tom ${h.m.toFixed(2)} · ${h.n} manchetes (${h.pos}+ ${h.neg}−)` : ' sem manchetes'; } } } }, scales: { x: axis(), y: { ...axis(), suggestedMin: -1, suggestedMax: 1 } } } });
 }
 function newsItems(L) {
   const sp = s => `<span class="pill ${s > 0 ? 'up' : s < 0 ? 'down' : 'flat'} num">${s > 0 ? '+' : ''}${s}</span>`;
-  return L.map(n => `<li>${sp(n.sent)}<a href="${esc(n.link)}" target="_blank" rel="noopener noreferrer">${esc(n.titulo)}</a>
+  return L.map(n => `<li>${sp(n.sent)}<a href="${esc(n.link)}" target="_blank" rel="noopener noreferrer">${esc(n.titulo)}<span class="vh"> (abre em nova aba)</span></a>
     <div class="m"><span>${esc(n.fonte)}</span>·<span>${tempoRel(n.data)}</span><span class="pill acc">${esc(n.categoria)}</span>${n.tickers.map(t => `<span class="pill flat">${t}</span>`).join('')}</div></li>`).join('') || '<li class="sub">Nenhuma notícia.</li>';
 }
 
@@ -446,7 +486,7 @@ function renderRF() {
     { k: 'real', h: 'Real a.a.', r: 1, f: r => `<span class="num">${pct(r.a.real)}</span>`, v: r => r.a.real },
     { k: 'eq', h: 'Equiv. CDB', r: 1, f: r => `<span class="num sub">${r.a.eqCdb.toFixed(0)}% CDI</span>`, v: r => r.a.eqCdb },
     { k: 'g', h: 'Garantia', f: r => FGC.has(r.o.tipo) ? '<span class="pill up">FGC</span>' : r.o.tipo.startsWith('Tesouro') ? '<span class="pill acc">Tesouro</span>' : '<span class="pill warn">sem FGC</span>' },
-    { k: 'st', h: '', f: r => r.a.ok ? '' : `<span class="pill flat">${r.a.motivos[0]}</span>` }
+    { k: 'st', h: '', sr: 'Situação', f: r => r.a.ok ? '' : `<span class="pill flat">${r.a.motivos[0]}</span>` }
   ], rows, { sort: { k: 'liq', dir: -1 }, rerender: renderRF, rowCls: r => r.o === SIM.o ? 'sel' : !r.a.ok ? 'off' : r.a.liqAA === best ? 'best' : '', empty: 'Nenhuma oferta com esses filtros.',
     onRow: r => { abrirSim(r.o, f); } });
   $('#rfTbl').querySelectorAll('tbody tr').forEach(tr => tr.style.cursor = 'pointer');
@@ -471,7 +511,7 @@ function abrirSim(o, f) {
     $('#simPrazo').value = o.liq ? (f.prazo || 12) : Math.round(o.prazo / 30.4);
   }
   $('#simCard').hidden = false; renderRF(); renderSim();
-  if (novo) $('#simCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (novo) $('#simCard').scrollIntoView({ behavior: SUAVE, block: 'nearest' });
 }
 function simular(o, V, meses) {
   // carrega até o vencimento (ou até o resgate, se tiver liquidez diária); mostra o valor de cada mês
@@ -527,11 +567,11 @@ function renderOffEditor() {
   const custom = !!store.get('af2.offers', null);
   $('#offSrc').textContent = `${OFF.length} ofertas · ${custom ? 'suas edições neste navegador' : 'do ofertas.js'}`;
   const sel = (o, k, opts) => `<select data-k="${k}">${opts.map(x => `<option${x === o[k] ? ' selected' : ''}>${esc(x)}</option>`).join('')}</select>`;
-  $('#offTbl').innerHTML = `<thead><tr><th>Plataforma</th><th>Produto</th><th>Emissor</th><th>Indexador</th><th class="r">Taxa</th><th class="r">Prazo (d)</th><th class="r">Mínimo</th><th>Liq.</th><th></th></tr></thead><tbody>${OFF.map((o, i) => `<tr data-i="${i}">
+  $('#offTbl').innerHTML = `<thead><tr><th>Plataforma</th><th>Produto</th><th>Emissor</th><th>Indexador</th><th class="r">Taxa</th><th class="r">Prazo (d)</th><th class="r">Mínimo</th><th>Liq.</th><th><span class="vh">Apagar</span></th></tr></thead><tbody>${OFF.map((o, i) => `<tr data-i="${i}">
     <td><input data-k="plat" value="${esc(o.plat)}" list="platList"></td><td>${sel(o, 'tipo', TIPOS)}</td><td><input data-k="emissor" value="${esc(o.emissor)}"></td><td>${sel(o, 'idx', ['CDI', 'Pré', 'IPCA'])}</td>
     <td class="r"><input class="n num" data-k="taxa" type="number" step="0.1" value="${o.taxa}"></td><td class="r"><input class="n num" data-k="prazo" type="number" step="30" value="${o.prazo}"></td>
     <td class="r"><input class="n num" data-k="min" type="number" step="100" value="${o.min}"></td><td><input data-k="liq" type="checkbox" ${o.liq ? 'checked' : ''} style="width:auto"></td>
-    <td><button class="btn ghost" data-del="${i}">✕</button></td></tr>`).join('')}</tbody><datalist id="platList">${plataformas().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`;
+    <td><button class="btn ghost" data-del="${i}" aria-label="Apagar esta oferta"><span aria-hidden="true">✕</span></button></td></tr>`).join('')}</tbody><datalist id="platList">${plataformas().map(p => `<option value="${esc(p)}">`).join('')}</datalist>`;
   $('#offTbl').querySelectorAll('[data-k]').forEach(el => el.addEventListener('change', () => {
     const o = OFF[+el.closest('tr').dataset.i], k = el.dataset.k;
     o[k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? +el.value : el.value;
@@ -663,7 +703,7 @@ function renderCarteira() {
   ck.push(['Nenhuma ação com previsão de venda', ac.every(l => !l.acao || l.acao.prev > -.1), 'só entram ações com previsão Compra ou Compra forte']);
   const setores = new Set(ac.map(l => l.emissor)); ck.push(['Diversificação entre setores', ac.length <= 1 || setores.size === ac.length, `${setores.size} setores diferentes`]);
   tabela($('#cRisk'), 'risk', [
-    { k: 's', h: '', f: r => r[1] ? '<span class="pill up">OK</span>' : '<span class="pill warn">ATENÇÃO</span>' },
+    { k: 's', h: '', sr: 'Resultado', f: r => r[1] ? '<span class="pill up">OK</span>' : '<span class="pill warn">ATENÇÃO</span>' },
     { k: 'n', h: 'Regra', w: 1, f: r => `${r[0]}<br><span class="sub">${r[2]}</span>` }
   ], ck, { rerender: renderCarteira });
 }
@@ -673,7 +713,7 @@ function renderSliders(w, on) {
   if (!store.get('af2.sliders', null)) store.set('af2.sliders', s);
   const tot = Object.values(s).reduce((a, b) => a + b, 0) || 1;
   if (box.dataset.built !== '1') {
-    box.innerHTML = CLASSES.map(c => `<div class="slider"><span><i class="dot" style="background:${css(c.cor)}"></i>${c.nome.split(' (')[0]}</span><input type="range" min="0" max="100" data-k="${c.k}"><span class="num" data-o="${c.k}"></span></div>`).join('') + '<button class="btn ghost" id="slReset" style="justify-self:start">voltar ao automático</button>';
+    box.innerHTML = CLASSES.map(c => `<div class="slider"><span><i class="dot" style="background:${css(c.cor)}"></i>${c.nome.split(' (')[0]}</span><input type="range" min="0" max="100" data-k="${c.k}" aria-label="${c.nome.split(' (')[0]}"><span class="num" data-o="${c.k}"></span></div>`).join('') + '<button class="btn ghost" id="slReset" style="justify-self:start">voltar ao automático</button>';
     box.dataset.built = '1';
     box.querySelectorAll('input').forEach(i => i.oninput = () => { const v = store.get('af2.sliders', {}); v[i.dataset.k] = +i.value; store.set('af2.sliders', v); renderCarteira(); });
     $('#slReset').onclick = () => { store.set('af2.sliders', null); localStorage.removeItem('af2.sliders'); box.dataset.built = ''; renderCarteira(); };
@@ -694,7 +734,7 @@ function abrirAtivo(sym) {
   aSel = sym; goto('acoes'); renderAcoes();
   const tr = $('#aTbl tr.sel'), box = tr?.closest('.scroll');   // a linha do ativo fica visível na tabela
   if (box) box.scrollTop = tr.offsetTop - box.clientHeight / 2;
-  $('#aChCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#aChCard').scrollIntoView({ behavior: SUAVE, block: 'start' });
 }
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-ativo]'); if (!a) return;
@@ -804,7 +844,7 @@ function renderTudo() {
   if (typeof renderExist === 'function') renderExist();
 }
 function goto(tab) {
-  document.querySelectorAll('nav.tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.tab === tab));
+  document.querySelectorAll('div.tabs [role=tab]').forEach(x => { const on = x.dataset.tab === tab; x.setAttribute('aria-selected', on); x.tabIndex = on ? 0 : -1; });
   document.querySelectorAll('section.tab').forEach(s => s.classList.toggle('on', s.id === 'tab-' + tab));
   store.set('af2.tab', tab); history.replaceState(null, '', '#' + tab);
 }
@@ -813,7 +853,13 @@ async function atualizarDados() {
   if (!store.get('af2.offers', null)) { try { await loadScript('ofertas.js'); OFF = BASE_OFF(); } catch {} }
   renderTudo();
 }
-document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => goto(b.dataset.tab));
+document.querySelectorAll('div.tabs [role=tab]').forEach(b => b.onclick = () => goto(b.dataset.tab));
+// teclado nas abas (padrão ARIA): ←/→ trocam, Home/End vão às pontas; o foco acompanha a aba
+$('div.tabs').addEventListener('keydown', e => {
+  const abas = [...document.querySelectorAll('div.tabs [role=tab]')], i = abas.indexOf(document.activeElement); if (i < 0) return;
+  const j = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: abas.length - 1 }[e.key]; if (j == null) return;
+  e.preventDefault(); const b = abas[(j + abas.length) % abas.length]; goto(b.dataset.tab); b.focus();
+});
 document.querySelectorAll('[data-goto]').forEach(b => b.onclick = () => goto(b.dataset.goto));
 ['#fValor', '#fPrazo', '#fIdx', '#fBusca', '#fIsento', '#fFgc', '#fLiq', '#fElig'].forEach(id => $(id).addEventListener('input', renderRF));
 ['#simValor', '#simPrazo'].forEach(id => $(id).addEventListener('input', renderSim));
@@ -821,7 +867,7 @@ $('#simClose').onclick = () => { SIM.o = null; $('#simCard').hidden = true; rend
 ['#cValor', '#cPrazo', '#cPerfil', '#cPlat', '#cRes', '#cCap', '#cCustom', '#cObj'].forEach(id => $(id).addEventListener('input', renderCarteira));
 ['#aTipo', '#aBusca', '#aSetor', '#aSinal'].forEach(id => $(id).addEventListener('input', renderAcoes));
 document.querySelectorAll('#aPer button').forEach(b => b.onclick = () => { APER = +b.dataset.v; store.set('af2.aper', APER); renderAcoes(); });
-$('#aVoltar').onclick = () => { const v = VOLTA; VOLTA = null; if (!v) return; goto(v.aba); setTimeout(() => scrollTo({ top: v.y, behavior: 'smooth' }), 50); };
+$('#aVoltar').onclick = () => { const v = VOLTA; VOLTA = null; if (!v) return; goto(v.aba); setTimeout(() => scrollTo({ top: v.y, behavior: SUAVE }), 50); };
 ['#nBusca', '#nCat', '#nTk', '#nSent'].forEach(id => $(id).addEventListener('input', renderNoticias));
 $('#offAdd').onclick = () => { OFF.unshift({ plat: 'XP', tipo: 'LCA', emissor: '', idx: 'CDI', taxa: 90, prazo: 720, min: 1000, liq: false }); saveOff(); renderOffEditor(); };
 $('#offReset').onclick = () => { if (confirm('Descartar suas edições e voltar para o ofertas.js?')) { try { localStorage.removeItem('af2.offers'); } catch {} OFF = BASE_OFF(); renderOffEditor(); renderChips(); renderRF(); renderCarteira(); } };
@@ -831,6 +877,26 @@ $('#themeBtn').onclick = () => {
   document.documentElement.dataset.theme = cur === 'dark' ? 'light' : 'dark'; store.set('af2.theme', document.documentElement.dataset.theme); renderTudo();
 };
 
+/* ================= acessibilidade ================= */
+// Botões de alternância (.chip e .seg) marcam o estado só com a classe "on": repassa como aria-pressed.
+// Campos dentro de tabelas editáveis ganham como nome o cabeçalho da coluna e o número da linha.
+function a11y(raiz) {
+  raiz.querySelectorAll('button.chip, .seg button').forEach(b => { if (!b.dataset.all) b.setAttribute('aria-pressed', b.classList.contains('on')); });
+  raiz.querySelectorAll('td input, td select').forEach(c => {
+    if (c.hasAttribute('aria-label')) return;
+    const td = c.closest('td'), tr = td.parentElement, th = td.closest('table')?.querySelector('thead tr')?.children[td.cellIndex];
+    c.setAttribute('aria-label', `${(th?.textContent || 'Campo').replace(/[↕▲▼]/g, '').trim()} — linha ${tr.sectionRowIndex + 1}`);
+  });
+}
+new MutationObserver(ms => { if (ms.some(m => m.type === 'childList' || m.target.matches?.('button'))) a11y(document); })
+  .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+// áreas com rolagem própria precisam ser alcançáveis pelo teclado para rolar (WCAG 2.1.1)
+document.querySelectorAll('.scroll, #strip').forEach(el => {
+  el.tabIndex = 0; el.setAttribute('role', 'group');
+  const t = el.id === 'strip' ? 'Indicadores do dia' : el.closest('.card')?.querySelector('h2')?.textContent.trim();
+  el.setAttribute('aria-label', (t || 'Tabela') + ' (área rolável)');
+});
+
 (async function init() {
   const th = store.get('af2.theme', null); if (th) document.documentElement.dataset.theme = th;
   const rf = store.get('af2.rf', null);
@@ -838,7 +904,7 @@ $('#themeBtn').onclick = () => {
   const cp = store.get('af2.cart', null);
   if (cp) { $('#cValor').value = cp.valor; $('#cPrazo').value = cp.prazo; $('#cPerfil').value = cp.perfil; $('#cRes').value = Math.round(cp.res * 100); $('#cCap').value = Math.round(cp.cap * 100); $('#cCustom').checked = cp.custom; if (cp.obj) $('#cObj').value = cp.obj; }
   const tab = location.hash.slice(1) || store.get('af2.tab', 'painel'); if (document.getElementById('tab-' + tab)) goto(tab);
-  renderTudo();
+  renderTudo(); a11y(document);
   await loadMacro();
   renderTudo();
   // atualização automática: dados de mercado a cada 10 min, Banco Central a cada 30 min

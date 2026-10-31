@@ -11,24 +11,31 @@
 <style>
 :root{
   --bg:#f4f5f7;--panel:#fff;--panel-2:#f0f2f5;--line:#e3e6eb;
-  --ink:#14181f;--ink-2:#4a5260;--ink-3:#7b8494;
-  --accent:#1d6fe0;--accent-soft:#e3eefc;
-  --up:#13895a;--up-soft:#e2f4ec;--down:#c9372c;--down-soft:#fbe7e5;--warn:#b7791f;--warn-soft:#fbf1df;
+  /* tons escurecidos para 4,5:1 também sobre os fundos suaves (antes: ink-3 #7b8494 3,2:1,
+     up #13895a 3,9:1, accent #1d6fe0 4,1:1, down #c9372c 4,3:1, warn #b7791f 3,3:1) */
+  --ink:#14181f;--ink-2:#4a5260;--ink-3:#5f6776;
+  --accent:#1a62c9;--accent-soft:#e3eefc;
+  --up:#0d7349;--up-soft:#e2f4ec;--down:#b8302a;--down-soft:#fbe7e5;--warn:#8a5a12;--warn-soft:#fbf1df;
+  --on-solid:#fff;
+  --line-ctl:#7f8794;  /* borda de campo: 3,2:1 até sobre --panel-2 (WCAG 1.4.11); --line fica para divisórias */
   --c1:#1d6fe0;--c2:#e07b1d;--c3:#13895a;--c4:#8a4fd8;--c5:#c9372c;--c6:#0e9aa7;
   --shadow:0 1px 2px rgba(16,24,40,.05);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0d1015;--panel:#151920;--panel-2:#1c2129;--line:#272d38;
-  --ink:#e8ebf0;--ink-2:#aab2c0;--ink-3:#77808f;
+  --ink:#e8ebf0;--ink-2:#aab2c0;--ink-3:#8d96a5;
   --accent:#5b9bff;--accent-soft:#1a2a44;
   --up:#3ccf8e;--up-soft:#12301f;--down:#ff6b5e;--down-soft:#3a1a17;--warn:#f0b450;--warn-soft:#3a2c12;
+  --on-solid:#0d1015;--line-ctl:#6a7383;
   --c1:#5b9bff;--c2:#ffa04d;--c3:#3ccf8e;--c4:#b48cff;--c5:#ff6b5e;--c6:#3fd0db;--shadow:none;
 }}
+/* ink-3 #8d96a5: 4,5:1 sobre os fundos suaves (o #77808f dava 3,6); on-solid: texto escuro sobre os selos cheios, que no escuro são claros */
 :root[data-theme="dark"]{
   --bg:#0d1015;--panel:#151920;--panel-2:#1c2129;--line:#272d38;
-  --ink:#e8ebf0;--ink-2:#aab2c0;--ink-3:#77808f;
+  --ink:#e8ebf0;--ink-2:#aab2c0;--ink-3:#8d96a5;
   --accent:#5b9bff;--accent-soft:#1a2a44;
   --up:#3ccf8e;--up-soft:#12301f;--down:#ff6b5e;--down-soft:#3a1a17;--warn:#f0b450;--warn-soft:#3a2c12;
+  --on-solid:#0d1015;--line-ctl:#6a7383;
   --c1:#5b9bff;--c2:#ffa04d;--c3:#3ccf8e;--c4:#b48cff;--c5:#ff6b5e;--c6:#3fd0db;--shadow:none;
 }
 *{box-sizing:border-box}
@@ -43,12 +50,12 @@ header.top{display:flex;justify-content:space-between;align-items:center;gap:12p
 .sp{justify-content:space-between}
 .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin-bottom:10px}
 .tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px;box-shadow:var(--shadow);min-width:0}
-.tile .l{font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .l{font-size:12px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .v{font-size:17px;font-weight:600;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tile .d{font-size:11px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-nav.tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;overflow-x:auto;margin-bottom:10px;position:sticky;top:6px;z-index:5;box-shadow:var(--shadow)}
-nav.tabs button{flex:0 0 auto;border:0;background:none;color:var(--ink-2);font:inherit;font-weight:500;padding:6px 12px;border-radius:7px;cursor:pointer}
-nav.tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--accent)}
+.tile .d{font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+div.tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;overflow-x:auto;margin-bottom:10px;position:sticky;top:6px;z-index:5;box-shadow:var(--shadow)}
+div.tabs button{flex:0 0 auto;border:0;background:none;color:var(--ink-2);font:inherit;font-weight:500;padding:6px 12px;border-radius:7px;cursor:pointer}
+div.tabs button[aria-selected="true"]{background:var(--accent-soft);color:var(--accent)}
 section.tab{display:none}section.tab.on{display:block}
 .grid{display:grid;gap:10px}
 .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g12{grid-template-columns:1fr 2fr}.g21{grid-template-columns:2fr 1fr}
@@ -61,33 +68,36 @@ section.tab{display:none}section.tab.on{display:block}
 .scroll{overflow:auto;max-height:340px;border:1px solid var(--line);border-radius:8px}
 .scroll.tall{max-height:max(520px,calc(100vh - 260px))}.scroll.short{max-height:230px}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
-th{position:sticky;top:0;background:var(--panel-2);color:var(--ink-3);font-weight:600;font-size:11px;text-align:left;padding:6px 8px;white-space:nowrap;z-index:1}
-th.s{cursor:pointer;user-select:none}th.s:hover{color:var(--ink)}
+th{position:sticky;top:0;background:var(--panel-2);color:var(--ink-3);font-weight:600;font-size:12px;text-align:left;padding:6px 8px;white-space:nowrap;z-index:1}
+th.s{padding:0}
+/* o cabeçalho ordenável é um botão (teclado e leitor de tela); ocupa a célula toda: alvo ≥ 24px */
+th.s button{display:block;width:100%;min-height:26px;font:inherit;color:inherit;text-align:inherit;background:none;border:0;padding:6px 8px;cursor:pointer;user-select:none;white-space:nowrap}
+th.s button:hover{color:var(--ink)}
 th .ar{opacity:.35;margin-left:3px}th.on .ar{opacity:1;color:var(--accent)}
 td{padding:5px 8px;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap}
 td.w{white-space:normal}
 td.r,th.r{text-align:right}
 tbody tr:hover td{background:var(--panel-2)}
 tr.sel td{background:var(--accent-soft)!important}
-tr.off td{opacity:.45}
+tr.off td{color:var(--ink-3)}  /* esmaecida pela cor, não por opacidade: mantém 4,5:1 */
 tr.best td{background:var(--up-soft)}
-.pill{display:inline-block;font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:99px;white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:600;padding:1px 7px;border-radius:99px;white-space:nowrap}
 .up{color:var(--up)}.down{color:var(--down)}
 .pill.up{background:var(--up-soft)}.pill.down{background:var(--down-soft)}
 .pill.flat{background:var(--panel-2);color:var(--ink-2)}.pill.warn{background:var(--warn-soft);color:var(--warn)}.pill.acc{background:var(--accent-soft);color:var(--accent)}
-.pill.sup{background:var(--up);color:#fff}.pill.sdown{background:var(--down);color:#fff}
-input,select{font:inherit;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:5px 8px;min-width:0}
+.pill.sup{background:var(--up);color:var(--on-solid)}.pill.sdown{background:var(--down);color:var(--on-solid)}
+input,select{font:inherit;color:var(--ink);background:var(--panel-2);border:1px solid var(--line-ctl);border-radius:7px;padding:5px 8px;min-width:0}
 input:focus,select:focus{outline:2px solid var(--accent);outline-offset:-1px}
 input[type=range]{padding:0;accent-color:var(--accent)}
 input[type=checkbox]{accent-color:var(--accent)}
-label.f{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--ink-2);font-weight:500}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink-2);font-weight:500}
 label.ck{display:inline-flex;gap:5px;align-items:center;font-size:12px;color:var(--ink-2);cursor:pointer}
 .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 .btn{font:inherit;font-weight:500;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:5px 10px;border-radius:7px;cursor:pointer}
 .btn:hover{border-color:var(--ink-3)}
-.btn.ghost{border-color:transparent;background:none;color:var(--ink-3);padding:2px 6px}
+.btn.ghost{border-color:transparent;background:none;color:var(--ink-3);padding:2px 6px;min-height:24px;min-width:24px}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
-.chip{font:inherit;font-size:11.5px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);padding:3px 9px;border-radius:99px;cursor:pointer}
+.chip{font:inherit;font-size:12px;min-height:24px;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);padding:3px 9px;border-radius:99px;cursor:pointer}
 .chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .filters{display:grid;gap:8px;background:var(--panel-2);border-radius:8px;padding:10px;margin-bottom:8px}
 .meter{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin:10px 0 4px}
@@ -95,7 +105,7 @@ label.ck{display:inline-flex;gap:5px;align-items:center;font-size:12px;color:var
 .meter span.on{outline:2px solid var(--ink);outline-offset:2px}
 .meter span:nth-child(1){background:var(--down)}.meter span:nth-child(2){background:color-mix(in srgb,var(--down) 50%,var(--panel-2))}
 .meter span:nth-child(3){background:var(--ink-3)}.meter span:nth-child(4){background:color-mix(in srgb,var(--up) 50%,var(--panel-2))}.meter span:nth-child(5){background:var(--up)}
-.meter-l{display:grid;grid-template-columns:repeat(5,1fr);font-size:10px;color:var(--ink-3);text-align:center}
+.meter-l{display:grid;grid-template-columns:repeat(5,1fr);font-size:12px;line-height:1.25;color:var(--ink-3);text-align:center}
 .verdict{font-size:22px;font-weight:700;letter-spacing:-.02em}
 .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 ul.why{margin:6px 0 0;padding-left:16px;color:var(--ink-2)}ul.why li{margin:3px 0}
@@ -104,30 +114,30 @@ ul.why{margin:6px 0 0;padding-left:16px;color:var(--ink-2)}ul.why li{margin:3px 
 .news li:first-child{border-top:0}
 .news a{color:var(--ink);text-decoration:none;font-weight:500}
 .news a:hover{color:var(--accent);text-decoration:underline}
-.news .m{grid-column:2;font-size:11px;color:var(--ink-3);display:flex;gap:5px;flex-wrap:wrap;align-items:center}
-.status{font-size:11.5px;color:var(--ink-3)}
+.news .m{grid-column:2;font-size:12px;color:var(--ink-3);display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.status{font-size:12px;color:var(--ink-3)}
 .status i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ink-3);margin-right:5px}
 .status.ok i{background:var(--up)}.status.err i{background:var(--down)}
-details>summary{cursor:pointer;font-weight:600;font-size:13px;list-style:none}
+details>summary{cursor:pointer;font-weight:600;font-size:13px;list-style:none;padding:3px 0}
 details>summary::before{content:"▸ ";color:var(--ink-3)}details[open]>summary::before{content:"▾ "}
-td input,td select{padding:2px 5px;background:transparent;border-color:transparent;width:100%}
+td input,td select{padding:2px 5px;min-height:24px;background:transparent;border-color:transparent;width:100%}
 td input:hover,td select:hover{border-color:var(--line)}
 td input.n{width:72px;text-align:right}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12px}.kv b{font-weight:600}
 .slider{display:grid;grid-template-columns:130px 1fr 44px;gap:8px;align-items:center;font-size:12px}
-footer{margin-top:20px;color:var(--ink-3);font-size:11px}
+footer{margin-top:20px;color:var(--ink-3);font-size:12px}
 .seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:3px;margin-bottom:10px;gap:2px}
 .seg button{font:inherit;font-weight:500;border:0;background:none;color:var(--ink-2);padding:6px 14px;border-radius:6px;cursor:pointer}
-.seg button.on{background:var(--accent);color:#fff}
+.seg button.on{background:var(--accent);color:var(--on-solid)}
 .drop{display:block;border:1.5px dashed var(--line);border-radius:9px;padding:12px;cursor:pointer;text-align:center}
 .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
 .ai{font-size:13px;line-height:1.55;color:var(--ink)}.ai h3{font-size:13.5px;margin:12px 0 4px}.ai ul{margin:4px 0;padding-left:18px}.ai p{margin:6px 0}
 tr.imp td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
 .mini-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
 .mini{background:var(--panel-2);border-radius:8px;padding:8px 10px;min-width:0}
-.mini .l{font-size:10.5px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.mini .l{font-size:12px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 .mini .v{font-size:17px;font-weight:700;margin:2px 0}
-.mini .d{font-size:11.5px;color:var(--ink-2);line-height:1.45;overflow-wrap:anywhere}
+.mini .d{font-size:12px;color:var(--ink-2);line-height:1.45;overflow-wrap:anywhere}
 .num .sub{font-family:Inter,system-ui,sans-serif}
 .so-mob{display:none}
 @media(max-width:700px){
@@ -142,33 +152,48 @@ a.tk:hover,a.tk:focus-visible{color:var(--accent);text-decoration-style:solid}
 tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
 @keyframes flash{0%,60%{box-shadow:0 0 0 2px var(--warn);background:var(--warn-soft)}100%{box-shadow:none}}
 .flash,.flash td{animation:flash 2.4s ease-out}
+/* ---- acessibilidade ---- */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+tr[tabindex]:focus-visible td{background:var(--accent-soft)}
+tr[tabindex]:focus-visible{outline-offset:-2px}
+.scroll:focus-visible{outline-offset:-2px}
+/* texto só para leitor de tela (e campo de arquivo que precisa continuar focável) */
+.vh{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.drop:focus-within,label.btn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.pular{position:absolute;left:12px;top:-60px;z-index:2147483001;background:var(--panel);color:var(--accent);border:2px solid var(--accent);border-radius:7px;padding:8px 12px;font-weight:600;text-decoration:none}
+.pular:focus{top:8px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>
 </head>
 <body>
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
 <div class="wrap">
   <header class="top">
     <div><h1>Análise Financeira</h1><p class="sub">Tendência do mercado, buscador de renda fixa e montagem de carteira — atualiza sozinho.</p></div>
-    <div class="row"><span id="status" class="status"><i></i>carregando…</span><button class="btn" id="themeBtn" title="Alternar tema">◐</button></div>
+    <div class="row"><span id="status" class="status" role="status"><i></i>carregando…</span><button class="btn" id="themeBtn" title="Alternar tema" aria-label="Alternar tema claro ou escuro"><span aria-hidden="true">◐</span></button></div>
   </header>
 
+  <main id="conteudo" tabindex="-1">
+  <h2 class="vh">Indicadores do dia</h2>
   <div class="strip" id="strip"></div>
 
-  <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="painel" aria-selected="true">Painel</button>
-    <button role="tab" data-tab="carteira">Carteira</button>
-    <button role="tab" data-tab="rf">Renda fixa</button>
-    <button role="tab" data-tab="acoes">Ações</button>
-    <button role="tab" data-tab="news">Notícias</button>
-    <button role="tab" data-tab="macro">Juros e câmbio</button>
-  </nav>
+  <!-- abas no padrão ARIA: setas trocam de aba, Home/End vão para a primeira/última (app.js) -->
+  <div class="tabs" role="tablist" aria-label="Seções do painel">
+    <button role="tab" id="aba-painel" data-tab="painel" aria-controls="tab-painel" aria-selected="true">Painel</button>
+    <button role="tab" id="aba-carteira" data-tab="carteira" aria-controls="tab-carteira" aria-selected="false" tabindex="-1">Carteira</button>
+    <button role="tab" id="aba-rf" data-tab="rf" aria-controls="tab-rf" aria-selected="false" tabindex="-1">Renda fixa</button>
+    <button role="tab" id="aba-acoes" data-tab="acoes" aria-controls="tab-acoes" aria-selected="false" tabindex="-1">Ações</button>
+    <button role="tab" id="aba-news" data-tab="news" aria-controls="tab-news" aria-selected="false" tabindex="-1">Notícias</button>
+    <button role="tab" id="aba-macro" data-tab="macro" aria-controls="tab-macro" aria-selected="false" tabindex="-1">Juros e câmbio</button>
+  </div>
 
   <!-- PAINEL -->
-  <section class="tab on" id="tab-painel">
+  <section class="tab on" id="tab-painel" role="tabpanel" aria-labelledby="aba-painel">
     <div class="grid g3">
       <div class="card">
         <div class="row sp"><h2>Previsão do Ibovespa</h2><span class="pill acc">próximas 4 semanas</span></div>
-        <div class="meter" id="ibMeter"><span></span><span></span><span></span><span></span><span></span></div>
-        <div class="meter-l"><span>Venda forte</span><span>Venda</span><span>Neutro</span><span>Compra</span><span>Compra forte</span></div>
+        <div class="meter" id="ibMeter" role="img" aria-label="Escala de Venda forte a Compra forte"><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="meter-l" aria-hidden="true"><span>Venda forte</span><span>Venda</span><span>Neutro</span><span>Compra</span><span>Compra forte</span></div>
         <div class="row sp mt"><div class="verdict" id="ibVerdict">—</div><div class="num sub" id="ibScore"></div></div>
         <p class="sub" id="ibBack"></p>
       </div>
@@ -196,20 +221,20 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
       </div>
     </div>
     <div class="card mt">
-      <div class="row sp"><h2>Últimas manchetes</h2><button class="btn ghost" data-goto="news">ver todas →</button></div>
+      <div class="row sp"><h2>Últimas manchetes</h2><button class="btn ghost" data-goto="news">ver todas as notícias →</button></div>
       <div class="scroll short mt"><ul class="news" id="pNews"></ul></div>
     </div>
   </section>
 
   <!-- CARTEIRA -->
-  <section class="tab" id="tab-carteira">
-    <div class="seg" id="modoSeg"><button data-modo="zero">Montar do zero</button><button data-modo="exist">Analisar minha carteira</button></div>
+  <section class="tab" id="tab-carteira" role="tabpanel" aria-labelledby="aba-carteira">
+    <div class="seg" id="modoSeg" role="group" aria-label="Modo da carteira"><button data-modo="zero">Montar do zero</button><button data-modo="exist">Analisar minha carteira</button></div>
     <div id="modoExist" hidden>
       <div class="note" id="eAlerta" hidden style="margin-bottom:10px;border:1px solid var(--down);background:var(--down-soft)"></div>
       <div class="card" id="patCard">
         <div class="grid g3" style="align-items:center">
           <div>
-            <div class="sub" style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;font-size:11px">Seu patrimônio</div>
+            <div class="sub" style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;font-size:12px">Seu patrimônio</div>
             <div class="num" id="patTotal" style="font-size:30px;font-weight:700;letter-spacing:-.02em">—</div>
             <div class="sub" id="patSub"></div>
             <div class="kv mt" id="patKv"></div>
@@ -223,11 +248,11 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
           <h2>Sua carteira atual</h2>
           <p class="sub">Digite o que você tem ou importe um arquivo. Tudo é lido e guardado só neste navegador.</p>
           <label class="drop mt" id="eDrop">
-            <input type="file" id="eFile" accept=".csv,.txt,.xlsx,.xls,.pdf,.json" multiple hidden>
+            <input type="file" id="eFile" accept=".csv,.txt,.xlsx,.xls,.pdf,.json" multiple class="vh">
             <b>Importar arquivos</b> <span class="sub">(pode escolher vários, de bancos diferentes)</span><br><span class="sub">Extrato de conta da XP (PDF), extrato de posição da B3 (Área do Investidor → Extratos → Posição, .xlsx), planilha/CSV de qualquer corretora, PDF da declaração do IR (Bens e Direitos) ou uma carteira salva (.json).</span>
           </label>
           <div class="chips mt" id="eSrcs"></div>
-          <p class="sub mt" id="eImpMsg"></p>
+          <p class="sub mt" id="eImpMsg" role="status"></p>
           <div class="form mt">
             <label class="f">Perfil<select id="ePerfil"><option value="conservador">Conservador</option><option value="moderado" selected>Moderado</option><option value="arrojado">Arrojado</option></select></label>
             <label class="f">Objetivo nas ações<select id="eObj"><option value="equilibrado">Equilibrado (crescimento)</option><option value="dividendos">Dividendos (renda mensal)</option><option value="trade">Trade (curto prazo)</option></select></label>
@@ -242,7 +267,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
         <div class="card">
           <div class="row sp"><h2>Diagnóstico</h2><span class="sub" id="eTotal"></span></div>
           <div class="grid g12 mt" style="align-items:center">
-            <div><div class="verdict" id="eVerdict">—</div><div class="num sub" id="eScore"></div><div class="meter" id="eMeter"><span></span><span></span><span></span><span></span><span></span></div><p class="sub" id="eVerdictSub"></p></div>
+            <div><div class="verdict" id="eVerdict">—</div><div class="num sub" id="eScore"></div><div class="meter" id="eMeter" role="img" aria-label="Escala da nota da carteira"><span></span><span></span><span></span><span></span><span></span></div><p class="sub" id="eVerdictSub"></p></div>
             <div class="chart sm"><canvas id="chExist"></canvas></div>
           </div>
           <div class="scroll short mt"><table id="eClasses"></table></div>
@@ -259,9 +284,9 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
         <div class="row sp">
           <div><h2>Evolução do patrimônio</h2><p class="sub" id="evoSub"></p></div>
           <div class="row">
-            <div class="seg" id="evoPer" style="margin:0"><button data-v="21">1M</button><button data-v="63">3M</button><button data-v="126">6M</button><button data-v="252">1A</button><button data-v="504">2A</button></div>
-            <div class="seg" id="evoModo" style="margin:0"><button data-v="valor">R$</button><button data-v="pct">%</button></div>
-            <select id="evoAgr"><option value="total">Total</option><option value="classe">Por classe</option><option value="ativo">Por investimento</option></select>
+            <div class="seg" id="evoPer" style="margin:0" role="group" aria-label="Período"><button data-v="21">1M</button><button data-v="63">3M</button><button data-v="126">6M</button><button data-v="252">1A</button><button data-v="504">2A</button></div>
+            <div class="seg" id="evoModo" style="margin:0" role="group" aria-label="Mostrar em"><button data-v="valor">R$</button><button data-v="pct">%</button></div>
+            <select id="evoAgr" aria-label="Agrupar a evolução"><option value="total">Total</option><option value="classe">Por classe</option><option value="ativo">Por investimento</option></select>
           </div>
         </div>
         <div class="row mt">
@@ -292,7 +317,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
       </div>
       <div class="card mt" id="eApCard"><div class="row sp"><h2>Onde colocar o novo dinheiro</h2><span class="sub" id="eApSub"></span></div><p class="sub">Aporte que aproxima a carteira do alvo sem vender nada.</p><div class="scroll short"><table id="eAp"></table></div><p class="mt" id="eApProj" style="font-size:12.5px;line-height:1.6"></p><p class="sub mt" id="eRebal"></p></div>
       <div class="card mt">
-        <div class="row sp"><h2>Seus ativos</h2><div class="row"><button class="btn" id="eAdd">+ Adicionar</button><button class="btn" id="eSave" title="Baixa a carteira e o retrato do mercado de hoje para reavaliar depois">Salvar carteira (JSON)</button><label class="btn" style="cursor:pointer">Abrir carteira salva<input type="file" id="eOpen" accept=".json" hidden></label><button class="btn ghost" id="eClear">Limpar tudo</button></div></div>
+        <div class="row sp"><h2>Seus ativos</h2><div class="row"><button class="btn" id="eAdd">+ Adicionar</button><button class="btn" id="eSave" title="Baixa a carteira e o retrato do mercado de hoje para reavaliar depois">Salvar carteira (JSON)</button><label class="btn" style="cursor:pointer">Abrir carteira salva<input type="file" id="eOpen" accept=".json" class="vh"></label><button class="btn ghost" id="eClear">Limpar tudo</button></div></div>
         <p class="sub">Valor atual de cada aplicação. Para ações e FIIs, a quantidade basta: o valor sai da cotação. Linhas importadas aparecem marcadas; passe o mouse para ver o que falta.</p>
         <div class="scroll mt"><table id="eTbl"></table></div>
       </div>
@@ -305,11 +330,11 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
         <div class="row sp"><h2>Análise com IA (Claude)</h2><span class="pill acc">opcional</span></div>
         <p class="sub">Envia um resumo da carteira (tipos, valores, taxas — sem nome, CPF ou conta) e o contexto de mercado ao Claude, usando a <b>sua</b> chave da API Anthropic (console.anthropic.com). A chave vai direto do seu navegador para a Anthropic; este site não tem servidor.</p>
         <div class="row mt">
-          <input id="aiKey" type="password" placeholder="sk-ant-…" style="flex:1;min-width:200px">
+          <input id="aiKey" type="password" placeholder="sk-ant-…" aria-label="Sua chave da API Anthropic" autocomplete="off" style="flex:1;min-width:200px">
           <label class="ck"><input type="checkbox" id="aiRemember"> lembrar neste navegador</label>
           <button class="btn" id="aiRun">Analisar com IA</button>
         </div>
-        <div id="aiOut" class="ai mt"></div>
+        <div id="aiOut" class="ai mt" aria-live="polite"></div>
       </div>
     </div>
     <div id="modoZero">
@@ -348,7 +373,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
   </section>
 
   <!-- RENDA FIXA -->
-  <section class="tab" id="tab-rf">
+  <section class="tab" id="tab-rf" role="tabpanel" aria-labelledby="aba-rf">
     <div class="card">
       <div class="filters">
         <div class="form">
@@ -357,8 +382,8 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
           <label class="f">Indexador<select id="fIdx"><option value="">Todos</option><option>CDI</option><option>Pré</option><option>IPCA</option></select></label>
           <label class="f">Buscar<input id="fBusca" placeholder="emissor, tipo…"></label>
         </div>
-        <div class="row"><span class="sub" style="width:76px">Plataformas</span><div class="chips" id="fPlats"></div></div>
-        <div class="row"><span class="sub" style="width:76px">Produtos</span><div class="chips" id="fTipos"></div></div>
+        <div class="row"><span class="sub" style="width:76px" id="fPlatsL">Plataformas</span><div class="chips" id="fPlats" role="group" aria-labelledby="fPlatsL"></div></div>
+        <div class="row"><span class="sub" style="width:76px" id="fTiposL">Produtos</span><div class="chips" id="fTipos" role="group" aria-labelledby="fTiposL"></div></div>
         <div class="row">
           <label class="ck"><input type="checkbox" id="fIsento"> só isentos de IR</label>
           <label class="ck"><input type="checkbox" id="fFgc"> só com FGC ou Tesouro</label>
@@ -372,7 +397,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
     <div class="card mt" id="simCard" hidden>
       <div class="row sp">
         <div><h2 id="simTitle">Simulação</h2><p class="sub" id="simSub"></p></div>
-        <button class="btn ghost" id="simClose" title="Fechar">✕</button>
+        <button class="btn ghost" id="simClose" title="Fechar" aria-label="Fechar a simulação"><span aria-hidden="true">✕</span></button>
       </div>
       <div class="grid g12 mt">
         <div>
@@ -408,14 +433,14 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
   </section>
 
   <!-- AÇÕES -->
-  <section class="tab" id="tab-acoes">
+  <section class="tab" id="tab-acoes" role="tabpanel" aria-labelledby="aba-acoes">
     <div class="card">
       <div class="filters">
         <div class="row">
-          <select id="aTipo"><option value="acoes">Ações</option><option value="fii">FIIs</option></select>
-          <input id="aBusca" placeholder="buscar ticker…" style="width:130px">
-          <select id="aSetor"><option value="">Todos os setores</option></select>
-          <select id="aSinal"><option value="">Qualquer previsão</option><option value="2">Compra forte</option><option value="1">Compra</option><option value="0">Neutro</option><option value="-1">Venda</option><option value="-2">Venda forte</option></select>
+          <select id="aTipo" aria-label="Tipo de ativo"><option value="acoes">Ações</option><option value="fii">FIIs</option></select>
+          <input id="aBusca" placeholder="buscar ticker…" aria-label="Buscar ticker" style="width:130px">
+          <select id="aSetor" aria-label="Setor"><option value="">Todos os setores</option></select>
+          <select id="aSinal" aria-label="Previsão"><option value="">Qualquer previsão</option><option value="2">Compra forte</option><option value="1">Compra</option><option value="0">Neutro</option><option value="-1">Venda</option><option value="-2">Venda forte</option></select>
           <span class="sub" id="aCount"></span>
         </div>
       </div>
@@ -426,7 +451,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
         <div class="row sp">
           <div><h2 id="aChTitle">Gráfico</h2><p class="sub" id="aChSub">Preço e médias móveis.</p></div>
           <div class="row"><button class="btn" id="aVoltar" hidden>← voltar para a carteira</button>
-            <div class="seg" id="aPer" style="margin:0"><button data-v="63">3M</button><button data-v="126">6M</button><button data-v="252">1A</button><button data-v="504">2A</button></div></div>
+            <div class="seg" id="aPer" style="margin:0" role="group" aria-label="Período do gráfico"><button data-v="63">3M</button><button data-v="126">6M</button><button data-v="252">1A</button><button data-v="504">2A</button></div></div>
         </div>
         <div class="chart mt" style="height:260px"><canvas id="chAcao"></canvas></div>
       </div>
@@ -443,15 +468,15 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
   </section>
 
   <!-- NOTÍCIAS -->
-  <section class="tab" id="tab-news">
+  <section class="tab" id="tab-news" role="tabpanel" aria-labelledby="aba-news">
     <div class="grid g21">
       <div class="card">
         <div class="filters">
           <div class="row">
-            <input id="nBusca" placeholder="buscar…" style="width:140px">
-            <select id="nCat"><option value="">Todos os temas</option></select>
-            <select id="nTk"><option value="">Todas as ações</option></select>
-            <select id="nSent"><option value="">Qualquer tom</option><option value="1">Positivas</option><option value="-1">Negativas</option><option value="0">Neutras</option></select>
+            <input id="nBusca" placeholder="buscar…" aria-label="Buscar nas notícias" style="width:140px">
+            <select id="nCat" aria-label="Tema"><option value="">Todos os temas</option></select>
+            <select id="nTk" aria-label="Ação"><option value="">Todas as ações</option></select>
+            <select id="nSent" aria-label="Tom da notícia"><option value="">Qualquer tom</option><option value="1">Positivas</option><option value="-1">Negativas</option><option value="0">Neutras</option></select>
             <span class="sub" id="nCount"></span>
           </div>
         </div>
@@ -472,7 +497,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
   </section>
 
   <!-- JUROS E CÂMBIO -->
-  <section class="tab" id="tab-macro">
+  <section class="tab" id="tab-macro" role="tabpanel" aria-labelledby="aba-macro">
     <div class="grid g2">
       <div class="card"><h2>Selic e expectativa do Focus</h2><div class="chart mt"><canvas id="chSelic"></canvas></div></div>
       <div class="card"><h2>IPCA 12 meses e Focus</h2><div class="chart mt"><canvas id="chIpca"></canvas></div></div>
@@ -481,6 +506,7 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
     </div>
     <div class="card mt"><h2>Leitura</h2><ul class="why" id="mWhy"></ul></div>
   </section>
+  </main>
 
   <footer>
     Fontes: Banco Central (SGS e Focus, ao vivo no navegador), Yahoo Finance e InfoMoney/Google Notícias (coletados pelo GitHub Actions a cada 30 min no pregão). Ofertas de renda fixa: <code>ofertas.js</code>.
@@ -491,17 +517,19 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
 <script src="dados.js"></script>
 <script src="importadores.js"></script>
 <script src="calculos.js"></script>
-<script src="app.js"></script>
-<script src="carteira.js"></script>
+<script src="app.js?v=20261031"></script>
+<script src="carteira.js?v=20261031"></script>
 <!-- === Botao de volta ao portfolio - cole antes de </body> === -->
+<nav aria-label="Portf&oacute;lio">
 <a id="mr-portfolio-btn" href="https://matheusmerlim1.github.io/" target="_blank" rel="noopener"
-   aria-label="Abrir o portf&oacute;lio de Matheus Raposo" title="Ver todos os meus projetos">
+   aria-label="Portf&oacute;lio de Matheus Raposo (abre em nova aba)" title="Ver todos os meus projetos">
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
        stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>
   </svg>
   <span>Portf&oacute;lio</span>
 </a>
+</nav>
 <style>
 #mr-portfolio-btn {
   position: fixed; top: 12px; right: 12px; z-index: 2147483000;
@@ -526,8 +554,8 @@ tr.link{cursor:pointer}tr.link:hover td{background:var(--accent-soft)}
 }
 @media print { #mr-portfolio-btn { display: none; } }
 /* reserva o canto direito só onde o botão encosta no conteúdo (cabeçalho e abas fixas) */
-@media (max-width: 2180px) { header.top, nav.tabs { padding-right: 130px; } }
-@media (max-width: 520px) { header.top, nav.tabs { padding-right: 48px; } }
+@media (max-width: 2180px) { header.top, div.tabs { padding-right: 130px; } }
+@media (max-width: 520px) { header.top, div.tabs { padding-right: 48px; } }
 </style>
 <!-- === fim do botao === -->
 </body>
